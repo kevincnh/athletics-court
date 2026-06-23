@@ -33,6 +33,10 @@ export default function App() {
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
 
+  // Submission state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   // Validation errors
   const [errors, setErrors] = useState<{ name?: string; email?: string; phone?: string }>({});
 
@@ -92,10 +96,41 @@ export default function App() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleConfirmBooking = (e: React.FormEvent) => {
+  const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateForm()) {
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const formattedDate = format(selectedDate!, 'yyyy-MM-dd');
+      const response = await fetch('/api/book', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          court: selectedCourt,
+          date: formattedDate,
+          time: selectedTime,
+          name,
+          email,
+          phone,
+          message
+        })
+      });
+
+      const resData = await response.json() as any;
+      if (!response.ok) {
+        throw new Error(resData.error || 'Failed to submit booking');
+      }
+
       setBookingStep('success');
+    } catch (err: any) {
+      setSubmitError(err.message || 'An error occurred during booking.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -423,13 +458,34 @@ export default function App() {
                     />
                   </div>
 
+                  {/* Error feedback */}
+                  {submitError && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl font-semibold text-xs text-center animate-in fade-in">
+                      {submitError}
+                    </div>
+                  )}
+
                   {/* Submit Button */}
                   <button 
                     type="submit"
-                    className="w-full py-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-black text-lg transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-800/20 active:scale-[0.98] mt-4"
+                    disabled={isSubmitting}
+                    className={`w-full py-4 rounded-xl font-black text-lg transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-800/20 active:scale-[0.98] mt-4 ${
+                      isSubmitting 
+                        ? 'bg-slate-500 cursor-not-allowed text-slate-200' 
+                        : 'bg-slate-800 hover:bg-slate-900 text-white'
+                    }`}
                   >
-                    Confirm Booking
-                    <ChevronRight className="w-5 h-5" />
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Confirm Booking</span>
+                        <ChevronRight className="w-5 h-5" />
+                      </>
+                    )}
                   </button>
                 </form>
               )}
