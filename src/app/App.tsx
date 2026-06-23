@@ -121,7 +121,14 @@ export default function App() {
         })
       });
 
-      const resData = await response.json() as any;
+      const responseText = await response.text();
+      let resData: any = {};
+      try {
+        resData = JSON.parse(responseText);
+      } catch (e) {
+        resData = { error: responseText || 'An unexpected error occurred.' };
+      }
+
       if (!response.ok) {
         throw new Error(resData.error || 'Failed to submit booking');
       }
