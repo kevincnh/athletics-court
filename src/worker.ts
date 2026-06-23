@@ -88,7 +88,7 @@ export default {
 };
 
 // Helper: Fetch OAuth Access Token using Refresh Token
-async getAccessToken(env: any): Promise<string> {
+async function getAccessToken(env: any): Promise<string> {
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: {
