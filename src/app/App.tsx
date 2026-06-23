@@ -313,7 +313,7 @@ export default function App() {
                   <div className="mt-8 pt-6 border-t-2 border-slate-100">
                     <div className="flex justify-between items-center mb-6">
                       <span className="font-bold text-slate-500">Hourly Rate</span>
-                      <span className="font-black text-2xl text-slate-800">$45</span>
+                      <span className="font-black text-2xl text-slate-800">500 pesos</span>
                     </div>
 
                     <button 
@@ -350,6 +350,7 @@ export default function App() {
                   <div className="text-sm font-medium text-slate-600 bg-amber-50 border border-amber-200/50 rounded-xl p-3 mb-2 flex flex-col gap-1">
                     <div><span className="font-bold text-amber-950">Date:</span> {selectedDate ? format(selectedDate, 'MMMM d, yyyy') : ''}</div>
                     <div><span className="font-bold text-amber-950">Time Slot:</span> {selectedTime}</div>
+                    <div><span className="font-bold text-amber-950">Amount Due:</span> 500 pesos</div>
                   </div>
 
                   {/* Name Input */}
@@ -456,9 +457,13 @@ export default function App() {
                       <span className="text-slate-400">Reserved For</span>
                       <span className="text-slate-800 font-bold">{name}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between border-b border-slate-200 pb-2">
                       <span className="text-slate-400">Email</span>
                       <span className="text-slate-800 font-bold truncate max-w-[180px]">{email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Amount Due</span>
+                      <span className="text-slate-800 font-bold">500 pesos</span>
                     </div>
                   </div>
 
