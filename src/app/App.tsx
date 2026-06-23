@@ -74,7 +74,7 @@ export default function App() {
       newErrors.name = 'Name is required';
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!emailRegex.test(email)) {
@@ -395,7 +395,12 @@ export default function App() {
                     <input 
                       type="tel"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '');
+                        if (val.length <= 11) {
+                          setPhone(val);
+                        }
+                      }}
                       placeholder="09171234567"
                       className={`w-full px-4 py-3 rounded-xl border-2 bg-slate-50 focus:bg-white transition-all font-semibold outline-none text-slate-800 ${
                         errors.phone ? 'border-red-400 focus:border-red-500' : 'border-slate-100 focus:border-amber-400'
