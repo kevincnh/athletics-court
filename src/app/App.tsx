@@ -170,36 +170,37 @@ export default function App() {
           </div>
 
           {/* Main Layout Container */}
-          <div className="flex flex-col h-full min-h-[600px] md:min-h-[800px] z-10 pt-16 md:pt-20 pb-4">
+          <div className="flex flex-col h-full min-h-[380px] sm:min-h-[500px] md:min-h-[600px] lg:min-h-[800px] z-10 pt-16 md:pt-20 pb-4">
             
             {/* Layout Grid */}
-            <div className="flex-1 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8">
+            <div className="flex-1 flex flex-row gap-2 sm:gap-4 md:gap-6 lg:gap-8">
               
               {/* Left Column - Facilities */}
-              <div className="w-full md:w-[25%] flex flex-row md:flex-col gap-4 md:gap-6">
-                <div className="flex-1 min-h-[80px] bg-white/80 backdrop-blur border-4 border-slate-300 rounded-2xl flex items-center justify-center font-black text-slate-600 text-sm md:text-lg tracking-widest shadow-sm hover:bg-white transition-colors">
-                  <div className="flex flex-col items-center gap-2">
-                    <Users className="w-6 h-6 text-slate-400" />
-                    <span>REST ROOMS</span>
+              <div className="w-[25%] flex flex-col gap-2 sm:gap-4 md:gap-6">
+                <div className="flex-1 min-h-[40px] sm:min-h-[80px] bg-white/80 backdrop-blur border-2 sm:border-4 border-slate-300 rounded-lg sm:rounded-2xl flex items-center justify-center font-black text-slate-600 text-[9px] sm:text-base lg:text-lg tracking-widest shadow-sm hover:bg-white transition-colors">
+                  <div className="flex flex-col items-center gap-0.5 sm:gap-2">
+                    <Users className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-slate-400" />
+                    <span className="hidden xs:inline">REST ROOMS</span>
+                    <span className="xs:hidden">REST</span>
                   </div>
                 </div>
-                <div className="flex-1 min-h-[80px] bg-white/80 backdrop-blur border-4 border-slate-300 rounded-2xl flex items-center justify-center font-black text-slate-600 text-sm md:text-lg tracking-widest shadow-sm hover:bg-white transition-colors">
-                  <div className="flex flex-col items-center gap-2">
-                    <MapIcon className="w-6 h-6 text-slate-400" />
+                <div className="flex-1 min-h-[40px] sm:min-h-[80px] bg-white/80 backdrop-blur border-2 sm:border-4 border-slate-300 rounded-lg sm:rounded-2xl flex items-center justify-center font-black text-slate-600 text-[9px] sm:text-base lg:text-lg tracking-widest shadow-sm hover:bg-white transition-colors">
+                  <div className="flex flex-col items-center gap-0.5 sm:gap-2">
+                    <MapIcon className="w-3.5 h-3.5 sm:w-6 sm:h-6 text-slate-400" />
                     <span>CAFE</span>
                   </div>
                 </div>
-                <div className="flex-1 min-h-[80px] bg-white/80 backdrop-blur border-4 border-slate-300 rounded-t-2xl border-b-0 flex items-end justify-center pb-4 md:pb-8 font-black text-slate-600 text-sm md:text-lg tracking-widest shadow-sm hover:bg-white transition-colors relative overflow-hidden">
-                  <div className="absolute bottom-0 w-full h-2 bg-amber-400"></div>
+                <div className="flex-1 min-h-[40px] sm:min-h-[80px] bg-white/80 backdrop-blur border-2 sm:border-4 border-slate-300 rounded-t-lg sm:rounded-t-2xl border-b-0 flex items-end justify-center pb-2 sm:pb-8 font-black text-slate-600 text-[9px] sm:text-base lg:text-lg tracking-widest shadow-sm hover:bg-white transition-colors relative overflow-hidden">
+                  <div className="absolute bottom-0 w-full h-1 sm:h-2 bg-amber-400"></div>
                   <span>ENTRY</span>
                 </div>
               </div>
 
               {/* Walkway divider */}
-              <div className="hidden md:flex w-4 bg-slate-300/50 rounded-full mx-2"></div>
+              <div className="flex w-2 sm:w-4 bg-slate-300/50 rounded-full mx-0.5 sm:mx-2"></div>
 
               {/* Middle Column - Courts 1,2,3 */}
-              <div className="w-full md:w-[32%] flex flex-col gap-4 md:gap-6">
+              <div className="w-[35%] flex flex-col gap-2 sm:gap-4 md:gap-6">
                  {[1, 2, 3].map(num => (
                    <Court
                      key={num}
@@ -211,7 +212,7 @@ export default function App() {
               </div>
 
               {/* Right Column - Courts 4,5,6 */}
-              <div className="w-full md:w-[32%] flex flex-col gap-4 md:gap-6">
+              <div className="w-[35%] flex flex-col gap-2 sm:gap-4 md:gap-6">
                  {[4, 5, 6].map(num => (
                    <Court
                      key={num}
