@@ -25,12 +25,13 @@ This document details the functional specifications for introducing a booking co
   - **Explicit Search Action**: The Bookings tab search input does not filter instant keystrokes automatically. It requires clicking a dedicated "Search" button or pressing the `Enter` key. A clear button (`X`) is nested inside the input to clear and reset the search query.
   - **Cohesive Date Picker**: The Courts view date selection operates via a custom Popover Calendar widget. The navigation is housed in a single seamless pill where the Left/Right chevrons are grouped together and the date text serves as a button that triggers a custom calendar card.
   - **Click-Outside Modal Dismissal**: Custom overlay modals (Booking Details and Conflict Details) close instantly when the user clicks anywhere on the dark backdrop overlay outside of the modal card. Clicks inside the card do not close the modal.
+  - **Global Settings Management**: The dashboard sidebar includes an "Email Alerts" toggle to quickly turn on/off the "Action Required" emails sent to the owner, providing a more configurable alert system.
 
 ### 3. Notification Flows
 * **Awaiting Confirmation**:
   - **Frontend**: The success page must inform the customer that their booking is *awaiting confirmation* and list their reservation details.
   - **Client Email**: Sent immediately stating the reservation is pending approval.
-  - **Owner Email**: Sent immediately alerting the owner of a new pending request.
+  - **Owner Email**: Sent immediately alerting the owner of a new pending request (this can be disabled via the "Email Alerts" toggle in the dashboard sidebar to reduce inbox fatigue).
 * **Status Updates**:
   - **Confirmed**: When the owner clicks "Confirm", the customer receives a "Booking Confirmed" email, and the status changes.
   - **Rejected**: When the owner clicks "Reject", the customer receives a "Booking Rejected" email.

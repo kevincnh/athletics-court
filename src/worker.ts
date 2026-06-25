@@ -41,6 +41,30 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/dev/clean-slate") {
+      try {
+        const accessToken = await getAccessToken(env);
+        const { results: slots } = await env.DB.prepare("SELECT calendar_event_id FROM reserved_slots WHERE calendar_event_id IS NOT NULL").all();
+        
+        await env.DB.prepare("DELETE FROM reserved_slots").run();
+        await env.DB.prepare("DELETE FROM bookings").run();
+        
+        const promises = slots.map(async (slot: any) => {
+          if (slot.calendar_event_id) {
+            try {
+              await deleteCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, slot.calendar_event_id);
+            } catch (e) {}
+          }
+        });
+        
+        await Promise.all(promises);
+        
+        return jsonResponse({ success: true, message: "Database wiped and events deleted", deletedEvents: promises.length });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // 2. GET /api/bookings
     if (url.pathname === "/api/bookings" && request.method === "GET") {
       try {
@@ -102,30 +126,36 @@ export default {
         // 1. Get Google Access Token
         const accessToken = await getAccessToken(env);
 
+        // Fetch sync setting
+        const syncSetting = await env.DB.prepare("SELECT value FROM settings WHERE key = 'sync_google_calendar'").first();
+        const syncGoogleCalendar = syncSetting ? syncSetting.value !== 'false' : true;
+
         // 2. Loop and Create Google Calendar Events
         for (const slot of slots) {
-          const startDateTime = parseDateTime(slot.date, slot.time_slot);
-          const endDateTime = getEndTime(startDateTime);
+          if (syncGoogleCalendar) {
+            const startDateTime = parseDateTime(slot.date, slot.time_slot);
+            const endDateTime = getEndTime(startDateTime);
 
-          const eventDetails = {
-            summary: `Court ${slot.court} Booking - ${booking.name}`,
-            description: `Contact Number: ${booking.phone}\nEmail: ${booking.email || 'None'}\nNotes: ${booking.message || 'None'}\nBooking ID: ${bookingId}`,
-            start: {
-              dateTime: startDateTime,
-              timeZone: "Asia/Manila",
-            },
-            end: {
-              dateTime: endDateTime,
-              timeZone: "Asia/Manila",
-            },
-          };
+            const eventDetails = {
+              summary: `Court ${slot.court} Booking - ${booking.name}`,
+              description: `Contact Number: ${booking.phone}\nEmail: ${booking.email || 'None'}\nNotes: ${booking.message || 'None'}\nBooking ID: ${bookingId}`,
+              start: {
+                dateTime: startDateTime,
+                timeZone: "Asia/Manila",
+              },
+              end: {
+                dateTime: endDateTime,
+                timeZone: "Asia/Manila",
+              },
+            };
 
-          const event = await createCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, eventDetails);
-          
-          // Save calendar event ID in D1
-          await env.DB.prepare("UPDATE reserved_slots SET calendar_event_id = ?1 WHERE id = ?2")
-            .bind(event.id, slot.id)
-            .run();
+            const event = await createCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, eventDetails);
+            
+            // Save calendar event ID in D1
+            await env.DB.prepare("UPDATE reserved_slots SET calendar_event_id = ?1 WHERE id = ?2")
+              .bind(event.id, slot.id)
+              .run();
+          }
         }
 
         // 3. Update Status
@@ -373,28 +403,34 @@ export default {
           finalConfirmedBookingId = newBookingId;
         }
 
-        // 3. Create Google Calendar Event for this confirmed slot
-        const startDateTime = parseDateTime(date, timeSlot);
-        const endDateTime = getEndTime(startDateTime);
-        const eventDetails = {
-          summary: `Court ${court} Booking - ${booking.name}`,
-          description: `Contact Number: ${booking.phone}\nEmail: ${booking.email || 'None'}\nNotes: ${booking.message || 'None'}\nBooking ID: ${finalConfirmedBookingId}`,
-          start: {
-            dateTime: startDateTime,
-            timeZone: "Asia/Manila",
-          },
-          end: {
-            dateTime: endDateTime,
-            timeZone: "Asia/Manila",
-          },
-        };
+        // Fetch sync setting
+        const syncSetting = await env.DB.prepare("SELECT value FROM settings WHERE key = 'sync_google_calendar'").first();
+        const syncGoogleCalendar = syncSetting ? syncSetting.value !== 'false' : true;
 
-        const event = await createCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, eventDetails);
-        
-        // Save calendar event ID in D1
-        await env.DB.prepare("UPDATE reserved_slots SET calendar_event_id = ?1 WHERE booking_id = ?2 AND court = ?3 AND date = ?4 AND time_slot = ?5")
-          .bind(event.id, finalConfirmedBookingId, court, date, timeSlot)
-          .run();
+        // 3. Create Google Calendar Event for this confirmed slot
+        if (syncGoogleCalendar) {
+          const startDateTime = parseDateTime(date, timeSlot);
+          const endDateTime = getEndTime(startDateTime);
+          const eventDetails = {
+            summary: `Court ${court} Booking - ${booking.name}`,
+            description: `Contact Number: ${booking.phone}\nEmail: ${booking.email || 'None'}\nNotes: ${booking.message || 'None'}\nBooking ID: ${finalConfirmedBookingId}`,
+            start: {
+              dateTime: startDateTime,
+              timeZone: "Asia/Manila",
+            },
+            end: {
+              dateTime: endDateTime,
+              timeZone: "Asia/Manila",
+            },
+          };
+
+          const event = await createCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, eventDetails);
+          
+          // Save calendar event ID in D1
+          await env.DB.prepare("UPDATE reserved_slots SET calendar_event_id = ?1 WHERE booking_id = ?2 AND court = ?3 AND date = ?4 AND time_slot = ?5")
+            .bind(event.id, finalConfirmedBookingId, court, date, timeSlot)
+            .run();
+        }
 
         // 4. Send Confirmation Email to Client for this slot
         if (booking.email && (booking.email as string).trim()) {
@@ -583,6 +619,37 @@ export default {
       }
     }
 
+    // 4.7 GET /api/settings
+    if (url.pathname === "/api/settings" && request.method === "GET") {
+      try {
+        const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
+        const settings = results.reduce((acc: any, row: any) => {
+          acc[row.key] = row.value;
+          return acc;
+        }, {});
+        return jsonResponse({ success: true, settings });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message || "Failed to fetch settings" }, 500);
+      }
+    }
+
+    // 4.8 POST /api/settings
+    if (url.pathname === "/api/settings" && request.method === "POST") {
+      try {
+        const { key, value } = await request.json();
+        if (!key) return jsonResponse({ error: "Missing key" }, 400);
+
+        await env.DB.prepare(`
+          INSERT INTO settings (key, value) VALUES (?1, ?2)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `).bind(key, value).run();
+
+        return jsonResponse({ success: true });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message || "Failed to update setting" }, 500);
+      }
+    }
+
     // 5. POST /api/book (Original submission revised for D1 Pending states)
     if (url.pathname === "/api/book" && request.method === "POST") {
       try {
@@ -675,54 +742,60 @@ export default {
           await sendEmail(accessToken, rawEmail);
         }
 
-        // Send Alert Email to Owner
-        const ownerEmailSubject = `[Action Required] New Pending Booking Request - ${name}`;
-        const ownerEmailBody = `
-          <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff;">
-            ${emailHeaderHtml}
-            <h2 style="color: #4f46e5; margin-top: 15px; padding-bottom: 10px; border-bottom: 2px solid #4f46e5; font-size: 20px;">New Pending Booking Request</h2>
-            <p>A new booking request is pending. Action is required to Confirm or Reject this request.</p>
-            
-            <h3 style="color: #333; margin-top: 20px;">Customer Details</h3>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-              <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold; width: 30%;">Name</td>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${name}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Contact Number</td>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${phone}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Email</td>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${email || 'Not provided'}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Message</td>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd;">${message || 'None'}</td>
-              </tr>
-            </table>
+        // Check if owner wants notifications
+        const notificationSetting = await env.DB.prepare("SELECT value FROM settings WHERE key = 'send_owner_notifications'").first();
+        const sendOwnerNotifications = notificationSetting ? notificationSetting.value !== 'false' : true;
 
-            <h3 style="color: #333;">Requested Slots</h3>
-            <div style="background-color: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-              ${emailBookingsHtml}
+        if (sendOwnerNotifications) {
+          // Send Alert Email to Owner
+          const ownerEmailSubject = `[Action Required] New Pending Booking Request - ${name}`;
+          const ownerEmailBody = `
+            <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff;">
+              ${emailHeaderHtml}
+              <h2 style="color: #4f46e5; margin-top: 15px; padding-bottom: 10px; border-bottom: 2px solid #4f46e5; font-size: 20px;">New Pending Booking Request</h2>
+              <p>A new booking request is pending. Action is required to Confirm or Reject this request.</p>
+              
+              <h3 style="color: #333; margin-top: 20px;">Customer Details</h3>
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <tr>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold; width: 30%;">Name</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${name}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Contact Number</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${phone}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Email</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${email || 'Not provided'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Message</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${message || 'None'}</td>
+                </tr>
+              </table>
+
+              <h3 style="color: #333;">Requested Slots</h3>
+              <div style="background-color: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                ${emailBookingsHtml}
+              </div>
+
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Total Amount Due</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; color: #10b981; font-weight: bold; font-size: 16px;">₱${amountDue.toLocaleString('en-US')}</td>
+                </tr>
+              </table>
+              
+              <p style="margin-top: 25px; text-align: center;">
+                <a href="https://athletics-court.kevincnh.workers.dev/dashboard" style="background-color: #4f46e5; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Go to Owner Dashboard</a>
+              </p>
             </div>
+          `;
 
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Total Amount Due</td>
-                <td style="padding: 8px; border-bottom: 1px solid #ddd; color: #10b981; font-weight: bold; font-size: 16px;">₱${amountDue.toLocaleString('en-US')}</td>
-              </tr>
-            </table>
-            
-            <p style="margin-top: 25px; text-align: center;">
-              <a href="https://athletics-court.kevincnh.workers.dev/dashboard" style="background-color: #4f46e5; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Go to Owner Dashboard</a>
-            </p>
-          </div>
-        `;
-
-        const rawOwnerEmail = buildRawEmail(env.GOOGLE_CALENDAR_ID, env.GOOGLE_CALENDAR_ID, ownerEmailSubject, ownerEmailBody);
-        await sendEmail(accessToken, rawOwnerEmail);
+          const rawOwnerEmail = buildRawEmail(env.GOOGLE_CALENDAR_ID, env.GOOGLE_CALENDAR_ID, ownerEmailSubject, ownerEmailBody);
+          await sendEmail(accessToken, rawOwnerEmail);
+        }
 
         return jsonResponse({ success: true, bookingId });
 
@@ -731,8 +804,23 @@ export default {
       }
     }
 
-    // Serve static assets from the frontend build
-    return env.ASSETS.fetch(request);
+    // Serve static assets from the frontend build (SPA fallback)
+    if (env.ASSETS) {
+      try {
+        const response = await env.ASSETS.fetch(request);
+        if (response.status === 404) {
+          // It's an SPA, so return index.html for unmatched routes
+          const urlObj = new URL(request.url);
+          urlObj.pathname = "/";
+          return env.ASSETS.fetch(new Request(urlObj.toString(), request));
+        }
+        return response;
+      } catch (err: any) {
+        return new Response("Asset fetch error: " + err.message, { status: 500 });
+      }
+    }
+    
+    return new Response("Error: env.ASSETS is undefined. Available bindings: " + Object.keys(env).join(', '), { status: 500 });
   },
 };
 

@@ -56,6 +56,8 @@ function Dashboard({ goBack }: { goBack: () => void }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [selectedAdminCourt, setSelectedAdminCourt] = useState<number | null>(null);
+  const [sendOwnerNotifications, setSendOwnerNotifications] = useState(true);
+  const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(true);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -89,8 +91,56 @@ function Dashboard({ goBack }: { goBack: () => void }) {
   useEffect(() => {
     if (isAuthenticated) {
       fetchBookings();
+      fetchSettings();
     }
   }, [isAuthenticated]);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data.success && data.settings) {
+        if (data.settings.send_owner_notifications !== undefined) {
+          setSendOwnerNotifications(data.settings.send_owner_notifications !== 'false');
+        }
+        if (data.settings.sync_google_calendar !== undefined) {
+          setSyncGoogleCalendar(data.settings.sync_google_calendar !== 'false');
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch settings", err);
+    }
+  };
+
+  const handleToggleNotifications = async () => {
+    const newValue = !sendOwnerNotifications;
+    setSendOwnerNotifications(newValue);
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'send_owner_notifications', value: newValue.toString() })
+      });
+    } catch (err) {
+      console.error("Failed to update setting", err);
+      setSendOwnerNotifications(!newValue); // revert on failure
+    }
+  };
+
+  const handleToggleCalendarSync = async () => {
+    const newValue = !syncGoogleCalendar;
+    setSyncGoogleCalendar(newValue);
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'sync_google_calendar', value: newValue.toString() })
+      });
+    } catch (err) {
+      console.error("Failed to update setting", err);
+      setSyncGoogleCalendar(!newValue); // revert on failure
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -401,6 +451,34 @@ function Dashboard({ goBack }: { goBack: () => void }) {
 
         {/* Bottom User */}
         <div className="px-4 pb-8 space-y-1">
+          {/* Notification Toggle */}
+          <div className="px-4 py-4 mb-2 bg-white/5 rounded-xl border border-white/10 flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-white">Email Alerts</span>
+              <span className="text-[10px] font-semibold text-white/50">For new bookings</span>
+            </div>
+            <button 
+              onClick={handleToggleNotifications}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${sendOwnerNotifications ? 'bg-amber-400' : 'bg-slate-700'}`}
+            >
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${sendOwnerNotifications ? 'translate-x-1.5' : '-translate-x-1.5'}`} />
+            </button>
+          </div>
+
+          {/* Calendar Sync Toggle */}
+          <div className="px-4 py-4 mb-2 bg-white/5 rounded-xl border border-white/10 flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-white">Calendar Auto-Sync</span>
+              <span className="text-[10px] font-semibold text-white/50">Push to Google Calendar</span>
+            </div>
+            <button 
+              onClick={handleToggleCalendarSync}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${syncGoogleCalendar ? 'bg-amber-400' : 'bg-slate-700'}`}
+            >
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${syncGoogleCalendar ? 'translate-x-1.5' : '-translate-x-1.5'}`} />
+            </button>
+          </div>
+
           <button 
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-white/50 hover:text-red-400 hover:bg-white/5 transition-colors font-semibold cursor-pointer"

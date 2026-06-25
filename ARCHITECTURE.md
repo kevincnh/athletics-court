@@ -45,6 +45,11 @@ Stores individual timeslots associated with a booking. Allows partial rejection 
 * `calendar_event_id` (TEXT): Google Calendar event ID (populated after owner confirmation)
 * `status` (TEXT): `'pending'` | `'confirmed'` | `'rejected'` (Tracks granular slot status to support partial rejections)
 
+### `settings` Table
+Stores global configuration flags and system preferences.
+* `key` (TEXT, PK): The setting identifier (e.g., `'send_owner_notifications'`).
+* `value` (TEXT): The setting value (e.g., `'true'` or `'false'`).
+
 ---
 
 ## User Interaction Workflows
@@ -80,8 +85,9 @@ sequenceDiagram
 4. **Court Date Selection & Calendar Popover**: The date selection header in the Courts view uses a seamless navigation pill. It groups Chevron navigation arrows together and integrates a custom styled `Popover` and `Calendar` component. This custom date picker allows the user to browse dates with a calendar popup that matches the theme and visual aesthetics of the dashboard, replacing default browser/OS widgets.
 5. **Interactive Modals with Backdrop Dismissal**: Details and conflict modals are configured to support backdrop click dismissal. Clicking on the dark semi-transparent overlay backdrop closes the modal, whereas clicking inside the card content propagates no events and keeps the modal open.
 6. **Explicit Search Interface**: To prevent immediate keystroke filtering confusion, the Bookings view uses an explicit search control. It includes a text input, an inline clear (`X`) button to instantly reset queries, and a dedicated "Search" button (or `Enter` key trigger) to apply filters.
-7. **Action (Confirm)**: Owner clicks "Confirm". The worker marks the booking status as `confirmed`, creates Google Calendar events, and emails the customer.
-8. **Action (Reject)**: Owner clicks "Reject". The worker marks the status as `rejected` and emails a decline notification to the customer.
+8. **Global Settings Management**: The dashboard sidebar includes an "Email Alerts" toggle. This switch interacts with the `POST /api/settings` endpoint to persistently enable or disable the automated "Action Required" email sent to the owner upon new booking submissions.
+9. **Action (Confirm)**: Owner clicks "Confirm". The worker marks the booking status as `confirmed`, creates Google Calendar events, and emails the customer.
+10. **Action (Reject)**: Owner clicks "Reject". The worker marks the status as `rejected` and emails a decline notification to the customer.
 
 ```mermaid
 sequenceDiagram
