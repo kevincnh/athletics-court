@@ -8,3 +8,8 @@ directory = "./dist"
 [vars]
 GOOGLE_CLIENT_ID = "280708042184-gdkglm0vtg8utkspqdhm8qc697ej0o6f.apps.googleusercontent.com"
 GOOGLE_CALENDAR_ID = "kevincnh77@gmail.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "athletics-court-db"
+database_id = "f8cd1d49-aae7-4f15-afdf-bbc2a1156667"

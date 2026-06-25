@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Court } from './components/Court';
 import { 
   CalendarDays, 
@@ -14,18 +14,590 @@ import {
   Mail, 
   Phone, 
   MessageSquare, 
-  CheckCircle2 
+  CheckCircle2,
+  Layers,
+  Lock,
+  LogOut,
+  RefreshCw,
+  Search,
+  AlertCircle,
+  X,
+  Calendar,
+  TrendingUp,
+  Bell,
+  Settings,
+  LayoutDashboard,
+  BookOpen,
+  Plus,
+  CheckCircle,
+  Activity
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay } from 'date-fns';
 
-export default function App() {
-  const [selectedCourt, setSelectedCourt] = useState<number | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
+const navItems = [
+  { icon: LayoutDashboard, label: "Dashboard", active: true },
+  { icon: Calendar, label: "Bookings", active: false },
+  { icon: MapPin, label: "Courts", active: false },
+];
 
-  // Booking Flow Steps: 'selection' | 'form' | 'success'
-  const [bookingStep, setBookingStep] = useState<'selection' | 'form' | 'success'>('selection');
+function Dashboard({ goBack }: { goBack: () => void }) {
+  const [passcode, setPasscode] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pending' | 'confirmed' | 'rejected'>('pending');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [activeNav, setActiveNav] = useState("Dashboard");
+
+  useEffect(() => {
+    const saved = localStorage.getItem('paddle_dashboard_passcode');
+    if (saved === 'admin123') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchBookings();
+    }
+  }, [isAuthenticated]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passcode === 'admin123') {
+      localStorage.setItem('paddle_dashboard_passcode', passcode);
+      setIsAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('Invalid passcode. Please try again.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('paddle_dashboard_passcode');
+    setIsAuthenticated(false);
+    setPasscode('');
+  };
+
+  const fetchBookings = async () => {
+    setIsLoading(true);
+    setErrorMessage('');
+    try {
+      const res = await fetch('/api/bookings');
+      const data = await res.json();
+      if (data.success) {
+        setBookings(data.bookings);
+      } else {
+        setErrorMessage(data.error || 'Failed to load bookings');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error fetching bookings');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirm = async (id: string) => {
+    if (!confirm('Are you sure you want to confirm this booking? This will schedule the event on Google Calendar and send a confirmation email.')) return;
+    setActionLoadingId(id);
+    setErrorMessage('');
+    try {
+      const res = await fetch('/api/bookings/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchBookings();
+      } else {
+        alert(data.error || 'Failed to confirm booking');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error confirming booking');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    if (!confirm('Are you sure you want to reject this booking? This will send a decline notification email.')) return;
+    setActionLoadingId(id);
+    setErrorMessage('');
+    try {
+      const res = await fetch('/api/bookings/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchBookings();
+      } else {
+        alert(data.error || 'Failed to reject booking');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error rejecting booking');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Stats calculation
+  const pendingCount = bookings.filter(b => b.status === 'pending').length;
+  const confirmedCount = bookings.filter(b => b.status === 'confirmed').length;
+  const totalSlotsCount = bookings
+    .filter(b => b.status === 'confirmed')
+    .reduce((sum, b) => sum + (b.slots?.length || 0), 0);
+  const totalRevenue = totalSlotsCount * 500;
+
+  // Filter bookings
+  const filteredBookings = bookings.filter(b => {
+    const matchesTab = b.status === activeTab;
+    if (!matchesTab) return false;
+
+    if (!searchQuery.trim()) return true;
+
+    const query = searchQuery.toLowerCase();
+    const matchesName = b.name?.toLowerCase().includes(query);
+    const matchesEmail = b.email?.toLowerCase().includes(query);
+    const matchesPhone = b.phone?.includes(query);
+    const matchesSlots = b.slots?.some((s: any) => 
+      s.date?.includes(query) || s.timeSlot?.toLowerCase().includes(query) || `court ${s.court}`.includes(query)
+    );
+
+    return matchesName || matchesEmail || matchesPhone || matchesSlots;
+  });
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 font-sans text-slate-800 relative overflow-hidden">
+        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-amber-400/20 blur-[130px] pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-indigo-400/10 blur-[130px] pointer-events-none"></div>
+
+        <div className="max-w-md w-full bg-white/85 backdrop-blur-xl border border-slate-200/80 p-8 sm:p-10 rounded-[2rem] shadow-[0_32px_64px_-12px_rgba(15,23,42,0.08)] z-10 text-center">
+          <div className="inline-flex bg-gradient-to-tr from-amber-500/10 to-amber-500/20 text-amber-600 p-4.5 rounded-2xl mb-5 border border-amber-500/20 relative shadow-inner">
+            <Lock className="w-8 h-8" />
+            <div className="absolute inset-0 bg-amber-400/10 rounded-2xl blur-lg animate-pulse pointer-events-none"></div>
+          </div>
+          <h2 className="text-3xl font-extrabold tracking-tight mb-2 text-slate-900">Owner Dashboard</h2>
+          <p className="text-slate-500 text-sm font-semibold mb-8">Secure access to manage court reservations</p>
+
+          <form onSubmit={handleLogin} className="space-y-5 text-left font-sans">
+            <div>
+              <label className="block text-xs font-bold text-slate-450 uppercase tracking-wider mb-2">Passcode</label>
+              <input
+                type="password"
+                value={passcode}
+                onChange={e => setPasscode(e.target.value)}
+                placeholder="Enter admin passcode"
+                className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 focus:border-slate-800 focus:bg-white rounded-xl font-semibold outline-none transition-all text-slate-800 placeholder-slate-450 focus:ring-1 focus:ring-slate-800"
+                autoFocus
+              />
+            </div>
+            {loginError && (
+              <div className="flex items-center gap-2 text-red-500 text-xs font-bold bg-red-50 p-3.5 rounded-xl border border-red-100 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+            <button
+              type="submit"
+              className="w-full py-4 bg-slate-900 hover:bg-slate-950 text-white rounded-xl font-bold tracking-wide shadow-xl shadow-slate-900/10 hover:shadow-slate-900/20 transition-all active:scale-[0.98] cursor-pointer"
+            >
+              Access Dashboard
+            </button>
+          </form>
+
+          <button
+            onClick={goBack}
+            className="mt-6 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            ← Back to Booking Map
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex w-full min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-amber-200 selection:text-slate-900">
+      {/* Sidebar */}
+      <aside className="w-64 flex flex-col bg-slate-950 text-white shrink-0 min-h-screen sticky top-0 self-start">
+        {/* Logo */}
+        <div className="px-6 pt-8 pb-6 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <span className="text-xl font-black tracking-widest text-white">
+              <span className="text-amber-400">THE</span> PADDLE CLUB
+            </span>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 px-4 py-6 space-y-1">
+          {navItems.map(({ icon: Icon, label }) => {
+            const isActive = activeNav === label;
+            return (
+              <button
+                key={label}
+                onClick={() => setActiveNav(label)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all font-semibold cursor-pointer ${
+                  isActive
+                    ? "bg-amber-400 text-amber-950 shadow-sm"
+                    : "text-white/60 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Bottom User */}
+        <div className="px-4 pb-8 space-y-1">
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-white/50 hover:text-red-400 hover:bg-white/5 transition-colors font-semibold cursor-pointer"
+          >
+            <LogOut size={18} strokeWidth={2} />
+            Sign Out
+          </button>
+          
+          <div className="mt-4 mx-2 flex items-center gap-3 border-t border-white/10 pt-5">
+            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-sm font-bold text-white shadow-inner">
+              AD
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white">Admin User</p>
+              <p className="text-xs font-medium text-white/40">Facility Manager</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <header className="bg-white border-b border-slate-200 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
+              {activeNav}
+            </h1>
+            <p className="text-sm font-medium text-slate-500 mt-1">
+              {format(new Date(), 'EEEE, d MMMM yyyy')}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={fetchBookings}
+              disabled={isLoading}
+              className="relative p-2.5 rounded-xl hover:bg-slate-100 transition-colors text-slate-500 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
+            </button>
+            <button 
+              onClick={goBack}
+              className="flex items-center gap-2 bg-slate-900 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-slate-800 transition-all shadow-sm cursor-pointer"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              New Booking
+            </button>
+          </div>
+        </header>
+
+        {/* Body */}
+        <div className="flex-1 p-8 space-y-6 overflow-y-auto">
+          {/* Stat cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              { label: "Pending Action", value: pendingCount.toString(), delta: pendingCount > 0 ? "Requires review" : "All caught up", icon: Clock, highlight: pendingCount > 0 },
+              { label: "Confirmed Bookings", value: confirmedCount.toString(), delta: "Active in Calendar", icon: CheckCircle2, highlight: false },
+              { label: "Booked Hours", value: totalSlotsCount.toString(), delta: "Total reserved slots", icon: Layers, highlight: false },
+              { label: "Estimated Revenue", value: `₱${totalRevenue.toLocaleString()}`, delta: "Based on confirmed", icon: TrendingUp, highlight: true },
+            ].map(({ label, value, delta, icon: Icon, highlight }) => (
+              <div
+                key={label}
+                className={`rounded-2xl p-6 border transition-all ${
+                  highlight && label === "Estimated Revenue"
+                    ? "bg-amber-400 border-amber-400 text-amber-950 shadow-[0_8px_20px_rgba(251,191,36,0.2)]"
+                    : highlight && label === "Pending Action"
+                    ? "bg-white border-amber-300 shadow-sm"
+                    : "bg-white border-slate-200 shadow-sm"
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className={`text-xs font-bold uppercase tracking-widest ${
+                      highlight && label === "Estimated Revenue" ? "text-amber-900/70" 
+                      : highlight && label === "Pending Action" ? "text-amber-600" 
+                      : "text-slate-500"
+                    }`}>
+                      {label}
+                    </p>
+                    <p className={`text-4xl font-black mt-2 tracking-tight ${
+                      highlight && label === "Estimated Revenue" ? "text-amber-950" : "text-slate-900"
+                    }`}>
+                      {value}
+                    </p>
+                  </div>
+                  <div className={`p-3 rounded-xl ${
+                    highlight && label === "Estimated Revenue" ? "bg-amber-300/50" 
+                    : highlight && label === "Pending Action" ? "bg-amber-50 text-amber-600"
+                    : "bg-slate-50 text-slate-500"
+                  }`}>
+                    <Icon size={20} className={
+                      highlight && label === "Estimated Revenue" ? "text-amber-950" 
+                      : highlight && label === "Pending Action" ? "text-amber-600"
+                      : "text-slate-500"
+                    } />
+                  </div>
+                </div>
+                <p className={`text-sm font-semibold mt-4 ${
+                  highlight && label === "Estimated Revenue" ? "text-amber-900/80" 
+                  : highlight && label === "Pending Action" ? "text-amber-600"
+                  : "text-slate-400"
+                }`}>
+                  {delta}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Court availability + chart row */}
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
+            {/* Court grid */}
+            <div className="xl:col-span-3 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
+                  Facilities Status
+                </h2>
+                <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />Available</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-900 inline-block" />Occupied</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 flex-1">
+                {[1, 2, 3, 4, 5, 6].map((courtId) => {
+                  const isOccupied = false; 
+                  return (
+                    <div
+                      key={courtId}
+                      className="border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">Court {courtId}</p>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md mt-1.5 inline-block bg-slate-100 text-slate-600 uppercase tracking-wider">
+                            Padel
+                          </span>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                          isOccupied ? "bg-slate-900 text-white" : "bg-emerald-50 text-emerald-700"
+                        }`}>
+                          {isOccupied ? "Occupied" : "Available"}
+                        </span>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-slate-500">
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={14} />
+                          <span className="text-xs font-semibold">
+                            No upcoming bookings
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Weekly bookings chart (Tailwind CSS based) */}
+            <div className="xl:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 mb-6">
+                This Week Activity
+              </h2>
+              <div className="flex-1 flex items-end gap-3 justify-between pb-2 h-48">
+                {[
+                  { day: 'Mon', h: '0%' },
+                  { day: 'Tue', h: '0%' },
+                  { day: 'Wed', h: '0%' },
+                  { day: 'Thu', h: '0%' },
+                  { day: 'Fri', h: '0%' },
+                  { day: 'Sat', h: '0%' },
+                  { day: 'Sun', h: '0%' },
+                ].map((stat, i) => (
+                  <div key={i} className="flex flex-col items-center gap-3 w-full group cursor-pointer">
+                    <div className="w-full bg-slate-100 rounded-t-lg relative flex items-end h-full">
+                      <div 
+                        className="w-full bg-amber-400 rounded-t-md group-hover:bg-amber-300 transition-colors" 
+                        style={{ height: stat.h }}
+                      ></div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-400 uppercase">{stat.day}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom row: bookings + revenue chart */}
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
+            {/* Upcoming/Managed Bookings */}
+            <div className="xl:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
+                  Manage Bookings
+                </h2>
+                
+                {/* Tabs */}
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+                  {(['pending', 'confirmed', 'rejected'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer capitalize ${
+                        activeTab === tab
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <span>{tab}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
+                        activeTab === tab 
+                          ? tab === 'pending' ? 'bg-amber-100 text-amber-800' 
+                            : tab === 'confirmed' ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-rose-100 text-rose-800'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        {bookings.filter(b => b.status === tab).length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="relative mb-6">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search bookings..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none transition-all text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20 focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+                {isLoading ? (
+                  <div className="py-10 text-center text-slate-500">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3" />
+                    <p className="font-bold text-sm">Loading...</p>
+                  </div>
+                ) : filteredBookings.length === 0 ? (
+                  <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-xl">
+                    <p className="text-slate-400 font-bold text-sm">No bookings found</p>
+                  </div>
+                ) : (
+                  filteredBookings.map((b) => (
+                    <div
+                      key={b.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all group bg-slate-50/50 hover:bg-white"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-sm font-black text-slate-600 uppercase shrink-0">
+                          {b.name?.substring(0, 2) || "U"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-900 truncate">{b.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                              b.status === 'pending' ? 'bg-amber-100 text-amber-800'
+                              : b.status === 'confirmed' ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {b.status}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-500">
+                              {b.slots?.length || 0} hrs requested
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 sm:gap-1 pl-14 sm:pl-0">
+                        <p className="text-sm font-black text-slate-900">
+                          ₱{((b.slots?.length || 0) * 500).toLocaleString()}
+                        </p>
+                        
+                        {b.status === 'pending' && (
+                          <div className="flex items-center gap-3 mt-1 sm:mt-2">
+                            <button
+                              onClick={() => handleReject(b.id)}
+                              disabled={actionLoadingId !== null}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-semibold text-sm disabled:opacity-50"
+                              title="Reject"
+                            >
+                              <X size={15} strokeWidth={2.5} className="text-slate-400 group-hover:text-rose-600" />
+                              <span>Reject</span>
+                            </button>
+                            <button
+                              onClick={() => handleConfirm(b.id)}
+                              disabled={actionLoadingId !== null}
+                              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-semibold text-sm transition-all duration-200 disabled:opacity-50 shadow-sm"
+                              title="Confirm Booking"
+                            >
+                              {actionLoadingId === b.id ? (
+                                <RefreshCw size={15} className="animate-spin text-white" />
+                              ) : (
+                                <Check size={15} strokeWidth={2.5} />
+                              )}
+                              <span>Confirm Booking</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+
+export default function App() {
+  const [isDashboard, setIsDashboard] = useState(window.location.pathname === '/dashboard');
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setIsDashboard(window.location.pathname === '/dashboard');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  if (isDashboard) {
+    return <Dashboard goBack={() => { window.history.pushState({}, '', '/'); setIsDashboard(false); }} />;
+  }
+  const [selectedCourts, setSelectedCourts] = useState<number[]>([]);
+  const [schedulingMode, setSchedulingMode] = useState<'batch' | 'individual' | null>(null);
+  
+  // Booking Flow Steps: 'selection' | 'scheduling-type' | 'scheduling' | 'form' | 'success'
+  const [bookingStep, setBookingStep] = useState<'selection' | 'scheduling-type' | 'scheduling' | 'form' | 'success'>('selection');
+
+  // courtConfigs: stores date & times per court.
+  // Record<number, { date: Date | null, times: string[], currentMonth: Date }>
+  const [courtConfigs, setCourtConfigs] = useState<Record<number, { date: Date | null, times: string[], currentMonth: Date }>>({});
+  
+  const [activeIndividualCourt, setActiveIndividualCourt] = useState<number | null>(null);
 
   // Form inputs
   const [name, setName] = useState('');
@@ -40,14 +612,73 @@ export default function App() {
   // Validation errors
   const [errors, setErrors] = useState<{ name?: string; email?: string; phone?: string }>({});
 
-  const times = ['09:00 AM', '10:30 AM', '01:00 PM', '02:30 PM', '04:00 PM', '06:30 PM'];
+  // Blocked slots state
+  const [blockedSlots, setBlockedSlots] = useState<{ court: number, time_slot: string, date: string }[]>([]);
+
+  // Fetch availability when selected dates change
+  useEffect(() => {
+    const activeDates = Object.values(courtConfigs)
+      .map(c => c.date ? format(c.date, 'yyyy-MM-dd') : null)
+      .filter((d): d is string => d !== null);
+
+    if (activeDates.length === 0) return;
+
+    const fetchAvailability = async (dateStr: string) => {
+      try {
+        const res = await fetch(`/api/availability?date=${dateStr}`);
+        const data = await res.json();
+        if (data.success) {
+          setBlockedSlots(prev => {
+            const filtered = prev.filter(s => s.date !== dateStr);
+            return [...filtered, ...data.reservedSlots.map((s: any) => ({ ...s, date: dateStr }))];
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch availability:", err);
+      }
+    };
+
+    const uniqueDates = Array.from(new Set(activeDates));
+    uniqueDates.forEach(d => {
+      fetchAvailability(d);
+    });
+  }, [courtConfigs]);
+
+  const times = [
+    '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', 
+    '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', 
+    '05:00 PM', '06:00 PM', '07:00 PM', '08:00 PM', 
+    '09:00 PM', '10:00 PM'
+  ];
 
   const handleCourtSelect = (num: number) => {
-    setSelectedCourt(num);
-    setSelectedDate(null);
-    setSelectedTime(null);
+    setSelectedCourts(prev => {
+      const next = prev.includes(num) ? prev.filter(c => c !== num) : [...prev, num];
+      
+      setCourtConfigs(prevConfigs => {
+        const updated = { ...prevConfigs };
+        // Add new courts
+        next.forEach(c => {
+          if (!updated[c]) {
+            updated[c] = { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+          }
+        });
+        // Remove deselected courts
+        Object.keys(updated).forEach(k => {
+          if (!next.includes(Number(k))) {
+            delete updated[Number(k)];
+          }
+        });
+        return updated;
+      });
+
+      if (next.length === 0) {
+        setSchedulingMode(null);
+        setActiveIndividualCourt(null);
+      }
+      return next;
+    });
     setBookingStep('selection');
-    // Reset form fields
     setName('');
     setEmail('');
     setPhone('');
@@ -55,18 +686,59 @@ export default function App() {
     setErrors({});
   };
 
-  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
-  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+  const handleNextMonth = (courtId: number) => {
+    setCourtConfigs(prev => ({
+      ...prev,
+      [courtId]: {
+        ...prev[courtId],
+        currentMonth: addMonths(prev[courtId].currentMonth, 1)
+      }
+    }));
+  };
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart);
-  const endDate = endOfWeek(monthEnd);
+  const handlePrevMonth = (courtId: number) => {
+    setCourtConfigs(prev => ({
+      ...prev,
+      [courtId]: {
+        ...prev[courtId],
+        currentMonth: subMonths(prev[courtId].currentMonth, 1)
+      }
+    }));
+  };
 
-  const calendarDays = eachDayOfInterval({
-    start: startDate,
-    end: endDate
-  });
+  const handleBatchNextMonth = () => {
+    setCourtConfigs(prev => {
+      const updated = { ...prev };
+      selectedCourts.forEach(c => {
+        updated[c] = {
+          ...updated[c],
+          currentMonth: addMonths(updated[c].currentMonth, 1)
+        };
+      });
+      return updated;
+    });
+  };
+
+  const handleBatchPrevMonth = () => {
+    setCourtConfigs(prev => {
+      const updated = { ...prev };
+      selectedCourts.forEach(c => {
+        updated[c] = {
+          ...updated[c],
+          currentMonth: subMonths(updated[c].currentMonth, 1)
+        };
+      });
+      return updated;
+    });
+  };
+
+  const getCalendarDays = (month: Date) => {
+    const monthStart = startOfMonth(month);
+    const monthEnd = endOfMonth(monthStart);
+    const startDate = startOfWeek(monthStart);
+    const endDate = endOfWeek(monthEnd);
+    return eachDayOfInterval({ start: startDate, end: endDate });
+  };
 
   const today = startOfDay(new Date());
 
@@ -79,9 +751,7 @@ export default function App() {
     }
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!emailRegex.test(email)) {
+    if (email.trim() && !emailRegex.test(email)) {
       newErrors.email = 'Please enter a valid email address';
     }
 
@@ -96,6 +766,12 @@ export default function App() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const totalBookingsCount = Object.values(courtConfigs).reduce(
+    (acc, val) => acc + (val.times?.length || 0),
+    0
+  );
+  const totalAmount = totalBookingsCount * 500;
+
   const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -103,17 +779,23 @@ export default function App() {
     setIsSubmitting(true);
     setSubmitError(null);
 
+    const bookings = selectedCourts.map(c => {
+      const config = courtConfigs[c] || { date: new Date(), times: [] };
+      return {
+        court: c,
+        date: format(config.date || new Date(), 'yyyy-MM-dd'),
+        times: config.times || []
+      };
+    });
+
     try {
-      const formattedDate = format(selectedDate!, 'yyyy-MM-dd');
       const response = await fetch('/api/book', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          court: selectedCourt,
-          date: formattedDate,
-          time: selectedTime,
+          bookings,
           name,
           email,
           phone,
@@ -142,10 +824,11 @@ export default function App() {
   };
 
   const resetAll = () => {
-    setSelectedCourt(null);
-    setSelectedDate(null);
-    setSelectedTime(null);
+    setSelectedCourts([]);
+    setSchedulingMode(null);
     setBookingStep('selection');
+    setCourtConfigs({});
+    setActiveIndividualCourt(null);
     setName('');
     setEmail('');
     setPhone('');
@@ -205,7 +888,7 @@ export default function App() {
                    <Court
                      key={num}
                      number={num}
-                     selected={selectedCourt === num}
+                     selected={selectedCourts.includes(num)}
                      onClick={() => handleCourtSelect(num)}
                    />
                  ))}
@@ -217,7 +900,7 @@ export default function App() {
                    <Court
                      key={num}
                      number={num}
-                     selected={selectedCourt === num}
+                     selected={selectedCourts.includes(num)}
                      onClick={() => handleCourtSelect(num)}
                    />
                  ))}
@@ -236,148 +919,71 @@ export default function App() {
           </div>
           <p className="text-slate-500 mb-8 font-medium">Select a court from the layout to check availability and book.</p>
 
-          {selectedCourt ? (
+          {selectedCourts.length > 0 ? (
             <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out fill-mode-both">
               
               {/* Selected Court Details */}
               <div className="bg-slate-50 p-5 rounded-2xl border-2 border-slate-100 mb-8 flex items-center gap-4 relative overflow-hidden group hover:border-amber-200 transition-colors">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-amber-100 rounded-full blur-2xl -mr-10 -mt-10 opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                <div className="bg-amber-400 text-amber-950 w-14 h-14 rounded-full flex items-center justify-center font-black text-2xl shadow-lg shadow-amber-400/30 relative z-10 shrink-0">
-                  {selectedCourt}
-                </div>
-                <div className="relative z-10">
-                  <div className="font-black text-xl text-slate-800 tracking-tight">Court {selectedCourt}</div>
-                  <div className="text-sm font-medium text-slate-500 flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3.5 h-3.5" /> Indoor Standard
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="bg-amber-400 text-amber-950 w-14 h-14 rounded-full flex items-center justify-center font-black text-2xl shadow-lg shadow-amber-400/30 shrink-0">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="font-black text-xl text-slate-800 tracking-tight">
+                      {selectedCourts.length > 1 ? `Courts: ${selectedCourts.sort().join(', ')}` : `Court ${selectedCourts[0]}`}
+                    </div>
+                    <div className="text-sm font-medium text-slate-500 mt-0.5">
+                      Indoor Standard
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* STEP 1: Date & Time Selection */}
+              {/* STEP 1: Main Court selection view & proceed action */}
               {bookingStep === 'selection' && (
-                <div className="flex-1 flex flex-col">
-                  {!selectedDate ? (
-                    <div className="space-y-4 flex-1 animate-in fade-in slide-in-from-right-4 duration-300">
-                      <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-                        <CalendarDays className="w-5 h-5 text-slate-400" />
-                        Select a Date
-                      </h3>
-                      
-                      <div className="bg-white border-2 border-slate-100 rounded-2xl p-4 shadow-sm">
-                        {/* Calendar Header */}
-                        <div className="flex items-center justify-between mb-4">
-                          <button 
-                            onClick={prevMonth}
-                            disabled={isBefore(currentMonth, startOfMonth(today))}
-                            className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-                          >
-                            <ChevronLeft className="w-5 h-5" />
-                          </button>
-                          <h4 className="font-black text-slate-800 text-lg">
-                            {format(currentMonth, 'MMMM yyyy')}
-                          </h4>
-                          <button 
-                            onClick={nextMonth}
-                            className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
-                          >
-                            <ChevronRight className="w-5 h-5" />
-                          </button>
-                        </div>
-
-                        {/* Calendar Grid */}
-                        <div className="grid grid-cols-7 gap-1 mb-2">
-                          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                            <div key={day} className="text-center text-xs font-bold text-slate-400 py-1">
-                              {day}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-7 gap-1">
-                          {calendarDays.map((date, i) => {
-                            const isPast = isBefore(date, today);
-                            const isCurrentMonth = isSameMonth(date, currentMonth);
-                            const isToday = isSameDay(date, today);
-
-                            return (
-                              <button 
-                                key={i}
-                                disabled={isPast}
-                                onClick={() => setSelectedDate(date)}
-                                className={`
-                                  aspect-square flex items-center justify-center rounded-xl text-sm font-bold transition-all
-                                  ${!isCurrentMonth ? 'text-slate-300' : ''}
-                                  ${isPast ? 'opacity-40 cursor-not-allowed text-slate-400' : 'hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 cursor-pointer border-2 border-transparent'}
-                                  ${isToday && !isPast ? 'bg-slate-800 text-white hover:bg-slate-700' : ''}
-                                  ${isCurrentMonth && !isPast && !isToday ? 'bg-slate-50 text-slate-700' : ''}
-                                `}
-                              >
-                                {format(date, 'd')}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
+                <div className="flex-1 flex flex-col justify-between">
+                  <div className="bg-slate-50 border border-slate-200/50 rounded-2xl p-5 text-sm font-semibold text-slate-600 space-y-3">
+                    <div className="flex justify-between">
+                      <span>Total Selected Courts:</span>
+                      <span className="text-slate-900 font-bold">{selectedCourts.length}</span>
                     </div>
-                  ) : (
-                    <div className="space-y-4 flex-1 animate-in fade-in slide-in-from-right-4 duration-300">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                          <Clock className="w-5 h-5 text-slate-400" />
-                          Available Times
-                        </h3>
-                        <button 
-                          onClick={() => { setSelectedDate(null); setSelectedTime(null); }}
-                          className="text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
-                        >
-                          {format(selectedDate, 'MMM d, yyyy')} • Change
-                        </button>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-3">
-                        {times.map((time, i) => (
-                          <button 
-                            key={i}
-                            onClick={() => setSelectedTime(time)}
-                            className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
-                              selectedTime === time
-                                ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm'
-                                : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-50'
-                            }`}
-                          >
-                            {time}
-                            {selectedTime === time && <Check className="w-4 h-4" />}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="flex justify-between">
+                      <span>Base Hourly Rate:</span>
+                      <span className="text-slate-900 font-bold">₱{(selectedCourts.length * 500).toLocaleString()}/hr</span>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Summary & Proceed to Form */}
                   <div className="mt-8 pt-6 border-t-2 border-slate-100">
-                    <div className="flex justify-between items-center mb-6">
-                      <span className="font-bold text-slate-500">Hourly Rate</span>
-                      <span className="font-black text-2xl text-slate-800">500 pesos</span>
-                    </div>
-
                     <button 
-                      disabled={!selectedDate || !selectedTime}
-                      onClick={() => setBookingStep('form')}
-                      className={`w-full py-4 rounded-xl font-black text-lg transition-all flex items-center justify-center gap-2 ${
-                        selectedDate && selectedTime 
-                          ? 'bg-slate-800 hover:bg-slate-900 text-white shadow-xl shadow-slate-800/20 active:scale-[0.98]' 
-                          : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                      }`}
+                      onClick={() => {
+                        if (selectedCourts.length > 1) {
+                          setBookingStep('scheduling-type');
+                        } else {
+                          setSchedulingMode('batch');
+                          // Create baseline configs
+                          setCourtConfigs(prev => {
+                            const updated = { ...prev };
+                            selectedCourts.forEach(c => {
+                              updated[c] = { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                            });
+                            return updated;
+                          });
+                          setBookingStep('scheduling');
+                        }
+                      }}
+                      className="w-full py-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-black text-lg transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-800/20 active:scale-[0.98]"
                     >
-                      {selectedDate && selectedTime ? 'Proceed to Details' : (!selectedDate ? 'Select a Date First' : 'Select a Time')}
-                      {selectedDate && selectedTime && <ChevronRight className="w-5 h-5" />}
+                      <span>Proceed to Schedule</span>
+                      <ChevronRight className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* STEP 2: Customer Details Form */}
-              {bookingStep === 'form' && (
-                <form onSubmit={handleConfirmBooking} className="flex-1 flex flex-col space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+              {/* STEP 1.5: Select Reservation Type (Batch vs Individual) */}
+              {bookingStep === 'scheduling-type' && (
+                <div className="flex-1 flex flex-col space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="flex items-center gap-2 mb-2">
                     <button 
                       type="button"
@@ -386,14 +992,488 @@ export default function App() {
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </button>
+                    <h3 className="font-bold text-slate-800 text-lg">Select Reservation Type</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    <button
+                      onClick={() => {
+                        setSchedulingMode('batch');
+                        // Copy baseline batch month config to all courts
+                        setCourtConfigs(prev => {
+                          const updated = { ...prev };
+                          selectedCourts.forEach(c => {
+                            updated[c] = { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                          });
+                          return updated;
+                        });
+                        setBookingStep('scheduling');
+                      }}
+                      className="w-full p-5 rounded-2xl border-2 border-slate-100 hover:border-amber-400 bg-white hover:bg-amber-50/30 transition-all text-left flex items-start gap-4 shadow-sm group"
+                    >
+                      <div className="bg-amber-100 text-amber-700 p-3 rounded-xl shrink-0 group-hover:bg-amber-200">
+                        <Layers className="w-6 h-6 text-amber-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-800 text-lg group-hover:text-amber-900">Batch Reservation</h4>
+                        <p className="text-sm font-semibold text-slate-400 mt-1 leading-snug">Apply the same Date & Timeslot configuration across all selected courts.</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSchedulingMode('individual');
+                        setActiveIndividualCourt(null);
+                        setBookingStep('scheduling');
+                      }}
+                      className="w-full p-5 rounded-2xl border-2 border-slate-100 hover:border-amber-400 bg-white hover:bg-amber-50/30 transition-all text-left flex items-start gap-4 shadow-sm group"
+                    >
+                      <div className="bg-amber-100 text-amber-700 p-3 rounded-xl shrink-0 group-hover:bg-amber-200">
+                        <CalendarDays className="w-6 h-6 text-amber-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-800 text-lg group-hover:text-amber-900">Individual Reservation</h4>
+                        <p className="text-sm font-semibold text-slate-400 mt-1 leading-snug">Configure a unique Date & Timeslot selection for each selected court separately.</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: Scheduling Configuration */}
+              {bookingStep === 'scheduling' && (
+                <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
+                  {/* BATCH MODE SCHEDULING */}
+                  {schedulingMode === 'batch' && (
+                    (() => {
+                      const refCourt = selectedCourts[0];
+                      const config = courtConfigs[refCourt] || { date: null, times: [], currentMonth: new Date() };
+                      const calendarDays = getCalendarDays(config.currentMonth);
+
+                      return (
+                        <div className="flex-1 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 mb-4">
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  if (selectedCourts.length > 1) {
+                                    setBookingStep('scheduling-type');
+                                  } else {
+                                    setBookingStep('selection');
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                              >
+                                <ArrowLeft className="w-5 h-5" />
+                              </button>
+                              <h3 className="font-bold text-slate-800 text-lg">Batch Schedule Setup</h3>
+                            </div>
+
+                            {!config.date ? (
+                              <div className="space-y-4 animate-in fade-in">
+                                <h3 className="font-bold text-slate-600 flex items-center gap-2">
+                                  <CalendarDays className="w-5 h-5 text-slate-400" /> Select a Date
+                                </h3>
+                                <div className="bg-white border-2 border-slate-100 rounded-2xl p-4 shadow-sm">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <button 
+                                      onClick={handleBatchPrevMonth}
+                                      disabled={isBefore(config.currentMonth, startOfMonth(today))}
+                                      className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition-colors"
+                                    >
+                                      <ChevronLeft className="w-5 h-5" />
+                                    </button>
+                                    <h4 className="font-black text-slate-800 text-lg">
+                                      {format(config.currentMonth, 'MMMM yyyy')}
+                                    </h4>
+                                    <button 
+                                      onClick={handleBatchNextMonth}
+                                      className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                                    >
+                                      <ChevronRight className="w-5 h-5" />
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-7 gap-1 mb-2">
+                                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                                      <div key={day} className="text-center text-xs font-bold text-slate-400 py-1">{day}</div>
+                                    ))}
+                                  </div>
+                                  <div className="grid grid-cols-7 gap-1">
+                                    {calendarDays.map((date, i) => {
+                                      const isPast = isBefore(date, today);
+                                      const isCurrentMonth = isSameMonth(date, config.currentMonth);
+                                      const isToday = isSameDay(date, today);
+                                      return (
+                                        <button 
+                                          key={i}
+                                          disabled={isPast}
+                                          onClick={() => {
+                                            setCourtConfigs(prev => {
+                                              const next = { ...prev };
+                                              selectedCourts.forEach(c => {
+                                                const current = next[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                                                next[c] = { ...current, date: date };
+                                              });
+                                              return next;
+                                            });
+                                          }}
+                                          className={`aspect-square flex items-center justify-center rounded-xl text-sm font-bold transition-all
+                                            ${!isCurrentMonth ? 'text-slate-300' : ''}
+                                            ${isPast ? 'opacity-40 cursor-not-allowed text-slate-400' : 'hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 cursor-pointer border-2 border-transparent'}
+                                            ${isToday && !isPast ? 'bg-slate-800 text-white hover:bg-slate-700' : ''}
+                                            ${isCurrentMonth && !isPast && !isToday ? 'bg-slate-50 text-slate-700' : ''}`}
+                                        >
+                                          {format(date, 'd')}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-4 animate-in fade-in">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <Clock className="w-5 h-5 text-slate-400" /> Available Times
+                                  </h3>
+                                  <button 
+                                    onClick={() => {
+                                      setCourtConfigs(prev => {
+                                        const next = { ...prev };
+                                        selectedCourts.forEach(c => {
+                                          next[c] = { ...next[c], date: null, times: [] };
+                                        });
+                                        return next;
+                                      });
+                                    }}
+                                    className="text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+                                  >
+                                    {format(config.date, 'MMM d, yyyy')} • Change
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  {times.map((time, i) => {
+                                    const isSelected = config.times.includes(time);
+                                    const dateStr = format(config.date!, 'yyyy-MM-dd');
+                                    const isBlocked = selectedCourts.some(c => 
+                                      blockedSlots.some(s => s.court === c && s.date === dateStr && s.time_slot === time)
+                                    );
+                                    return (
+                                      <button 
+                                        key={i}
+                                        disabled={isBlocked}
+                                        onClick={() => {
+                                          setCourtConfigs(prev => {
+                                            const next = { ...prev };
+                                            selectedCourts.forEach(c => {
+                                              const current = next[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                                              const currentTimes = current.times || [];
+                                              const newTimes = currentTimes.includes(time)
+                                                ? currentTimes.filter(t => t !== time)
+                                                : [...currentTimes, time];
+                                              next[c] = { ...current, times: newTimes };
+                                            });
+                                            return next;
+                                          });
+                                        }}
+                                        className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
+                                          isBlocked
+                                            ? 'border-transparent bg-slate-100 text-slate-300 line-through cursor-not-allowed'
+                                            : isSelected
+                                              ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm cursor-pointer'
+                                              : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-50 cursor-pointer'
+                                        }`}
+                                      >
+                                        {time}
+                                        {isSelected && <Check className="w-4 h-4" />}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-8 pt-6 border-t-2 border-slate-100">
+                            <button 
+                              disabled={!config.date || config.times.length === 0}
+                              onClick={() => setBookingStep('form')}
+                              className={`w-full py-4 rounded-xl font-black text-lg transition-all flex items-center justify-center gap-2 ${
+                                config.date && config.times.length > 0
+                                  ? 'bg-slate-800 hover:bg-slate-900 text-white shadow-xl shadow-slate-800/20 active:scale-[0.98]' 
+                                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              }`}
+                            >
+                              <span>Proceed to Details</span>
+                              <ChevronRight className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
+
+                  {/* INDIVIDUAL MODE SCHEDULING */}
+                  {schedulingMode === 'individual' && (
+                    <div className="flex-1 flex flex-col justify-between">
+                      {activeIndividualCourt === null ? (
+                        /* List of selected courts to configure */
+                        <div className="flex-1 flex flex-col justify-between">
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <button 
+                                type="button"
+                                onClick={() => setBookingStep('scheduling-type')}
+                                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                              >
+                                <ArrowLeft className="w-5 h-5" />
+                              </button>
+                              <h3 className="font-bold text-slate-800 text-lg">Configure Courts Separately</h3>
+                            </div>
+
+                            <div className="space-y-3">
+                              {selectedCourts.sort().map(c => {
+                                const config = courtConfigs[c] || { date: null, times: [], currentMonth: new Date() };
+                                const isConfigured = config.date !== null && config.times.length > 0;
+
+                                return (
+                                  <button
+                                    key={c}
+                                    onClick={() => setActiveIndividualCourt(c)}
+                                    className={`w-full p-4 rounded-xl border-2 transition-all text-left flex items-center justify-between group ${
+                                      isConfigured 
+                                        ? 'border-emerald-100 bg-emerald-50/20 hover:border-emerald-400' 
+                                        : 'border-slate-100 hover:border-amber-400 bg-white'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                                        isConfigured ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600 group-hover:bg-amber-100 group-hover:text-amber-800'
+                                      }`}>
+                                        {c}
+                                      </div>
+                                      <div>
+                                        <h4 className="font-bold text-slate-800">Court {c}</h4>
+                                        <p className="text-xs font-semibold text-slate-400 mt-0.5">
+                                          {isConfigured 
+                                            ? `${format(config.date!, 'MMM d')} • ${config.times.length} timeslots`
+                                            : 'Requires configuration'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="mt-8 pt-6 border-t-2 border-slate-100">
+                            <button 
+                              disabled={!selectedCourts.every(c => courtConfigs[c]?.date !== null && courtConfigs[c]?.times.length > 0)}
+                              onClick={() => setBookingStep('form')}
+                              className={`w-full py-4 rounded-xl font-black text-lg transition-all flex items-center justify-center gap-2 ${
+                                selectedCourts.every(c => courtConfigs[c]?.date !== null && courtConfigs[c]?.times.length > 0)
+                                  ? 'bg-slate-800 hover:bg-slate-900 text-white shadow-xl shadow-slate-800/20 active:scale-[0.98]' 
+                                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              }`}
+                            >
+                              <span>Proceed to Details</span>
+                              <ChevronRight className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Date and time configuration for a specific court */
+                        (() => {
+                          const c = activeIndividualCourt;
+                          const config = courtConfigs[c];
+                          const calendarDays = getCalendarDays(config.currentMonth);
+
+                          return (
+                            <div className="flex-1 flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-center gap-2 mb-4">
+                                  <button 
+                                    type="button"
+                                    onClick={() => setActiveIndividualCourt(null)}
+                                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                                  >
+                                    <ArrowLeft className="w-5 h-5" />
+                                  </button>
+                                  <h3 className="font-bold text-slate-800 text-lg">Configure Court {c}</h3>
+                                </div>
+
+                                {!config.date ? (
+                                  <div className="space-y-4 animate-in fade-in">
+                                    <h3 className="font-bold text-slate-600 flex items-center gap-2">
+                                      <CalendarDays className="w-5 h-5 text-slate-400" /> Select a Date
+                                    </h3>
+                                    <div className="bg-white border-2 border-slate-100 rounded-2xl p-4 shadow-sm">
+                                      <div className="flex items-center justify-between mb-4">
+                                        <button 
+                                          onClick={() => handlePrevMonth(c)}
+                                          disabled={isBefore(config.currentMonth, startOfMonth(today))}
+                                          className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition-colors"
+                                        >
+                                          <ChevronLeft className="w-5 h-5" />
+                                        </button>
+                                        <h4 className="font-black text-slate-800 text-lg">
+                                          {format(config.currentMonth, 'MMMM yyyy')}
+                                        </h4>
+                                        <button 
+                                          onClick={() => handleNextMonth(c)}
+                                          className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                                        >
+                                          <ChevronRight className="w-5 h-5" />
+                                        </button>
+                                      </div>
+                                      <div className="grid grid-cols-7 gap-1 mb-2">
+                                        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                                          <div key={day} className="text-center text-xs font-bold text-slate-400 py-1">{day}</div>
+                                        ))}
+                                      </div>
+                                      <div className="grid grid-cols-7 gap-1">
+                                        {calendarDays.map((date, i) => {
+                                          const isPast = isBefore(date, today);
+                                          const isCurrentMonth = isSameMonth(date, config.currentMonth);
+                                          const isToday = isSameDay(date, today);
+                                          return (
+                                            <button 
+                                              key={i}
+                                              disabled={isPast}
+                                              onClick={() => {
+                                                setCourtConfigs(prev => {
+                                                  const current = prev[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                                                  return {
+                                                    ...prev,
+                                                    [c]: { ...current, date: date }
+                                                  };
+                                                });
+                                              }}
+                                              className={`aspect-square flex items-center justify-center rounded-xl text-sm font-bold transition-all
+                                                ${!isCurrentMonth ? 'text-slate-300' : ''}
+                                                ${isPast ? 'opacity-40 cursor-not-allowed text-slate-400' : 'hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 cursor-pointer border-2 border-transparent'}
+                                                ${isToday && !isPast ? 'bg-slate-800 text-white hover:bg-slate-700' : ''}
+                                                ${isCurrentMonth && !isPast && !isToday ? 'bg-slate-50 text-slate-700' : ''}`}
+                                            >
+                                              {format(date, 'd')}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-4 animate-in fade-in">
+                                    <div className="flex items-center justify-between mb-4">
+                                      <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                        <Clock className="w-5 h-5 text-slate-400" /> Available Times
+                                      </h3>
+                                      <button 
+                                        onClick={() => {
+                                          setCourtConfigs(prev => {
+                                            const current = prev[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                                            return {
+                                              ...prev,
+                                              [c]: { ...current, date: null, times: [] }
+                                            };
+                                          });
+                                        }}
+                                        className="text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        {format(config.date, 'MMM d, yyyy')} • Change
+                                      </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                      {times.map((time, i) => {
+                                        const isSelected = config.times.includes(time);
+                                        const dateStr = format(config.date!, 'yyyy-MM-dd');
+                                        const isBlocked = blockedSlots.some(s => s.court === c && s.date === dateStr && s.time_slot === time);
+                                        return (
+                                          <button 
+                                            key={i}
+                                            disabled={isBlocked}
+                                            onClick={() => {
+                                              setCourtConfigs(prev => {
+                                                const current = prev[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                                                const currentTimes = current.times || [];
+                                                const newTimes = currentTimes.includes(time)
+                                                  ? currentTimes.filter(t => t !== time)
+                                                  : [...currentTimes, time];
+                                                return {
+                                                  ...prev,
+                                                  [c]: { ...current, times: newTimes }
+                                                };
+                                              });
+                                            }}
+                                            className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
+                                              isBlocked
+                                                ? 'border-transparent bg-slate-100 text-slate-300 line-through cursor-not-allowed'
+                                                : isSelected
+                                                  ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm cursor-pointer'
+                                                  : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-50 cursor-pointer'
+                                            }`}
+                                          >
+                                            {time}
+                                            {isSelected && <Check className="w-4 h-4" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="mt-8 pt-6 border-t-2 border-slate-100">
+                                <button 
+                                  onClick={() => setActiveIndividualCourt(null)}
+                                  className="w-full py-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-black text-lg transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-800/20 active:scale-[0.98]"
+                                >
+                                  <span>Save & Return</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 3: Customer Details Form */}
+              {bookingStep === 'form' && (
+                <form onSubmit={handleConfirmBooking} className="flex-1 flex flex-col space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="flex items-center gap-2 mb-2">
+                    <button 
+                      type="button"
+                      onClick={() => setBookingStep('scheduling')}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
                     <h3 className="font-bold text-slate-800 text-lg">Enter Details</h3>
                   </div>
 
                   {/* Summary of choice */}
-                  <div className="text-sm font-medium text-slate-600 bg-amber-50 border border-amber-200/50 rounded-xl p-3 mb-2 flex flex-col gap-1">
-                    <div><span className="font-bold text-amber-950">Date:</span> {selectedDate ? format(selectedDate, 'MMMM d, yyyy') : ''}</div>
-                    <div><span className="font-bold text-amber-950">Time Slot:</span> {selectedTime}</div>
-                    <div><span className="font-bold text-amber-950">Amount Due:</span> 500 pesos</div>
+                  <div className="text-sm font-medium text-slate-600 bg-amber-50 border border-amber-200/50 rounded-xl p-4 mb-2 flex flex-col gap-2 max-h-[180px] overflow-y-auto">
+                    <div className="font-black text-xs text-amber-950 uppercase tracking-wider border-b border-amber-200/50 pb-1">Booking Summary:</div>
+                    {selectedCourts.sort().map(c => {
+                      const config = courtConfigs[c] || { date: null, times: [] };
+                      return (
+                        <div key={c} className="text-xs leading-snug border-b border-amber-100/50 pb-1.5 last:border-0 last:pb-0">
+                          <span className="font-bold text-amber-950">Court {c}:</span>{' '}
+                          {config.date ? format(config.date, 'MMMM d, yyyy') : ''} @{' '}
+                          {config.times.sort().join(', ')}
+                        </div>
+                      );
+                    })}
+                    <div className="border-t border-amber-200/50 pt-2 flex justify-between font-black text-sm text-amber-950">
+                      <span>Total Amount Due:</span>
+                      <span>₱{totalAmount.toLocaleString()}</span>
+                    </div>
                   </div>
 
                   {/* Name Input */}
@@ -413,28 +1493,14 @@ export default function App() {
                     {errors.name && <p className="text-xs font-bold text-red-500">{errors.name}</p>}
                   </div>
 
-                  {/* Email Input */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-slate-400" /> Email Address
-                    </label>
-                    <input 
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="johndoe@example.com"
-                      className={`w-full px-4 py-3 rounded-xl border-2 bg-slate-50 focus:bg-white transition-all font-semibold outline-none text-slate-800 ${
-                        errors.email ? 'border-red-400 focus:border-red-500' : 'border-slate-100 focus:border-amber-400'
-                      }`}
-                    />
-                    {errors.email && <p className="text-xs font-bold text-red-500">{errors.email}</p>}
-                  </div>
-
                   {/* Contact Number Input */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-slate-400" /> Contact Number
-                    </label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" /> Contact Number
+                      </label>
+                      <span className="text-[10px] font-semibold text-amber-600">Required</span>
+                    </div>
                     <input 
                       type="tel"
                       value={phone}
@@ -450,6 +1516,26 @@ export default function App() {
                       }`}
                     />
                     {errors.phone && <p className="text-xs font-bold text-red-500">{errors.phone}</p>}
+                  </div>
+
+                  {/* Email Input */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-slate-400" /> Email Address
+                      </label>
+                      <span className="text-[10px] font-semibold text-slate-400">Optional</span>
+                    </div>
+                    <input 
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="johndoe@example.com"
+                      className={`w-full px-4 py-3 rounded-xl border-2 bg-slate-50 focus:bg-white transition-all font-semibold outline-none text-slate-800 ${
+                        errors.email ? 'border-red-400 focus:border-red-500' : 'border-slate-100 focus:border-amber-400'
+                      }`}
+                    />
+                    {errors.email && <p className="text-xs font-bold text-red-500">{errors.email}</p>}
                   </div>
 
                   {/* Message/Notes textarea */}
@@ -498,41 +1584,44 @@ export default function App() {
                 </form>
               )}
 
-              {/* STEP 3: Success Screen */}
+              {/* STEP 4: Success Screen */}
               {bookingStep === 'success' && (
                 <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6 animate-in zoom-in-95 duration-500 ease-out fill-mode-both">
-                  <div className="bg-emerald-100 text-emerald-600 p-4 rounded-full shadow-lg shadow-emerald-200">
-                    <CheckCircle2 className="w-16 h-16" strokeWidth={2.5} />
+                  <div className="bg-amber-100 text-amber-600 p-4 rounded-full shadow-lg shadow-amber-200">
+                    <Clock className="w-16 h-16" strokeWidth={2.5} />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-800">Booking Confirmed!</h3>
-                    <p className="text-slate-500 font-medium mt-1">We look forward to seeing you at the court.</p>
+                    <h3 className="text-2xl font-black text-slate-800">Awaiting Confirmation</h3>
+                    <p className="text-slate-500 font-medium text-xs mt-1">Your reservation request has been submitted. It is currently awaiting approval from the owner. You will receive an email notification once confirmed or rejected.</p>
                   </div>
 
-                  <div className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-5 text-left text-sm space-y-3 font-semibold text-slate-700">
-                    <div className="flex justify-between border-b border-slate-200 pb-2">
-                      <span className="text-slate-400">Court Selected</span>
-                      <span className="text-slate-800 font-bold">Court {selectedCourt}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-200 pb-2">
-                      <span className="text-slate-400">Date</span>
-                      <span className="text-slate-800 font-bold">{selectedDate ? format(selectedDate, 'MMMM d, yyyy') : ''}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-200 pb-2">
-                      <span className="text-slate-400">Time Slot</span>
-                      <span className="text-slate-800 font-bold">{selectedTime}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-200 pb-2">
-                      <span className="text-slate-400">Reserved For</span>
-                      <span className="text-slate-800 font-bold">{name}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-200 pb-2">
-                      <span className="text-slate-400">Email</span>
-                      <span className="text-slate-800 font-bold truncate max-w-[180px]">{email}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Amount Due</span>
-                      <span className="text-slate-800 font-bold">500 pesos</span>
+                  <div className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-left text-sm space-y-3 font-semibold text-slate-700 max-h-[220px] overflow-y-auto">
+                    <div className="font-bold text-xs text-slate-400 uppercase tracking-wider border-b pb-1">Reserved Sessions:</div>
+                    {selectedCourts.sort().map(c => {
+                      const config = courtConfigs[c] || { date: null, times: [] };
+                      return (
+                        <div key={c} className="flex flex-col sm:flex-row sm:justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                          <span className="text-slate-500 font-bold">Court {c}</span>
+                          <span className="text-slate-800 font-bold truncate max-w-[240px]">
+                            {config.date ? format(config.date, 'MMM d') : ''} @ {config.times.sort().join(', ')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    
+                    <div className="border-t border-slate-200 pt-2 space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Reserved For</span>
+                        <span className="text-slate-800 font-bold">{name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Email</span>
+                        <span className="text-slate-800 font-bold truncate max-w-[180px]">{email}</span>
+                      </div>
+                      <div className="flex justify-between font-black text-sm text-slate-800 pt-1 border-t border-dashed border-slate-200">
+                        <span>Amount Due</span>
+                        <span className="text-emerald-600">₱{totalAmount.toLocaleString()}</span>
+                      </div>
                     </div>
                   </div>
 
