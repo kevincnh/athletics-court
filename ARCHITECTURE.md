@@ -74,9 +74,10 @@ sequenceDiagram
 
 ### 2. Owner Confirmation & Management Workflow
 1. **Dashboard Access**: The owner navigates to `/dashboard` and enters the security passcode (`admin123`).
-2. **Review Requests**: The owner views pending requests. Availability fetches block only `confirmed` bookings, ensuring slots remain open to other clients until approved.
-3. **Action (Confirm)**: Owner clicks "Confirm". The worker marks the booking status as `confirmed`, creates Google Calendar events, and emails the customer.
-4. **Action (Reject)**: Owner clicks "Reject". The worker marks the status as `rejected` and emails a decline notification to the customer.
+2. **Modular Dashboard Rendering**: The dashboard UI (`src/app/App.tsx`) is split into specialized sub-views (`DashboardView.tsx`, `BookingsView.tsx`, `CourtsView.tsx`) rendered conditionally based on navigation state to improve maintainability and rendering efficiency.
+3. **Double Booking Detection & Resolution UI**: The system cross-references pending booking slots against all active bookings. In both the `DashboardView` and `BookingsView`, conflicting pending requests are grouped into a single unified Conflict Card. The owner can inspect the details side-by-side and choose which request to confirm. Confirming one booking automatically triggers the rejection of all conflicting pending bookings, resolving the conflict database-wide and notifying clients.
+4. **Action (Confirm)**: Owner clicks "Confirm". The worker marks the booking status as `confirmed`, creates Google Calendar events, and emails the customer.
+5. **Action (Reject)**: Owner clicks "Reject". The worker marks the status as `rejected` and emails a decline notification to the customer.
 
 ```mermaid
 sequenceDiagram

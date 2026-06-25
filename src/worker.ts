@@ -130,6 +130,52 @@ export default {
         // 3. Update Status
         await env.DB.prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ?1").bind(bookingId).run();
 
+        // 3.5 Auto-reject conflicting pending bookings
+        const conflictQuery = `
+          SELECT DISTINCT b.id, b.name, b.email
+          FROM bookings b
+          JOIN reserved_slots rs ON b.id = rs.booking_id
+          WHERE b.status = 'pending' AND b.id != ?1
+            AND EXISTS (
+              SELECT 1 FROM reserved_slots current_rs
+              WHERE current_rs.booking_id = ?1
+                AND current_rs.date = rs.date
+                AND current_rs.court = rs.court
+                AND current_rs.time_slot = rs.time_slot
+            )
+        `;
+        const { results: conflictingBookings } = await env.DB.prepare(conflictQuery).bind(bookingId).all();
+
+        for (const conf of conflictingBookings) {
+          // Reject in DB
+          await env.DB.prepare("UPDATE bookings SET status = 'rejected' WHERE id = ?1").bind(conf.id).run();
+          
+          // Send Rejection Email
+          if (conf.email && (conf.email as string).trim()) {
+            const emailHeaderHtml = `
+              <div style="text-align: center; margin-bottom: 25px; margin-top: -20px;">
+                <span style="background-color: #1e293b; color: #ffffff; padding: 10px 30px; border-radius: 0 0 16px 16px; font-weight: 900; font-size: 16px; letter-spacing: 2.5px; display: inline-block; font-family: 'Montserrat', 'Arial Black', sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                  <span style="color: #f59e0b;">THE</span> PADDLE CLUB
+                </span>
+              </div>
+            `;
+            const emailSubject = `Update on Reservation Request - The Paddle Club`;
+            const emailBody = `
+              <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff;">
+                ${emailHeaderHtml}
+                <h2 style="color: #ef4444; margin-top: 15px; padding-bottom: 10px; border-bottom: 2px solid #ef4444; font-size: 20px;">Reservation Declined</h2>
+                <p>Hi <strong>${conf.name}</strong>,</p>
+                <p>We regret to inform you that your reservation request at <strong>The Paddle Club</strong> has been declined. Unfortunately, the selected slots are unavailable or have been fully booked.</p>
+                <p>Please feel free to submit a new reservation request on our website for alternative timeslots.</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin-top: 30px;">
+                <p style="font-size: 12px; color: #777; text-align: center;">The Paddle Club &bull; Indoor Court Selector &bull; Auto-generated Notification</p>
+              </div>
+            `;
+            const rawEmail = buildRawEmail(conf.email as string, env.GOOGLE_CALENDAR_ID, emailSubject, emailBody);
+            await sendEmail(accessToken, rawEmail);
+          }
+        }
+
         // 4. Send Confirmation Email to Client
         if (booking.email && booking.email.trim()) {
           const emailHeaderHtml = `

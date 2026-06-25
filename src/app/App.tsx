@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Court } from './components/Court';
+import { DashboardView } from './components/dashboard/DashboardView';
+import { BookingsView } from './components/dashboard/BookingsView';
+import { CourtsView } from './components/dashboard/CourtsView';
 import { 
   CalendarDays, 
   Clock, 
@@ -51,6 +54,21 @@ function Dashboard({ goBack }: { goBack: () => void }) {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [activeNav, setActiveNav] = useState("Dashboard");
+  const [selectedAdminCourt, setSelectedAdminCourt] = useState<number | null>(null);
+
+  const isDoubleBooked = (booking: any) => {
+    if (booking.status !== 'pending') return false;
+    return bookings.some(other => {
+      if (other.id === booking.id || other.status === 'rejected') return false;
+      return booking.slots?.some((slot: any) => 
+        other.slots?.some((otherSlot: any) => 
+          slot.court === otherSlot.court && 
+          slot.date === otherSlot.date && 
+          slot.timeSlot === otherSlot.timeSlot
+        )
+      );
+    });
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('paddle_dashboard_passcode');
@@ -229,32 +247,59 @@ function Dashboard({ goBack }: { goBack: () => void }) {
       <aside className="w-64 flex flex-col bg-slate-950 text-white shrink-0 min-h-screen sticky top-0 self-start">
         {/* Logo */}
         <div className="px-6 pt-8 pb-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col">
             <span className="text-xl font-black tracking-widest text-white">
               <span className="text-amber-400">THE</span> PADDLE CLUB
+            </span>
+            <span className="text-[10px] font-bold text-white/40 mt-1 uppercase tracking-wider">
+              {format(new Date(), 'EEEE, d MMMM yyyy')}
             </span>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-4 py-6 space-y-1">
-          {navItems.map(({ icon: Icon, label }) => {
-            const isActive = activeNav === label;
-            return (
-              <button
-                key={label}
-                onClick={() => setActiveNav(label)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all font-semibold cursor-pointer ${
-                  isActive
-                    ? "bg-amber-400 text-amber-950 shadow-sm"
-                    : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-                {label}
-              </button>
-            );
-          })}
+        <nav className="flex-1 px-4 py-6 flex flex-col justify-between">
+          <div className="space-y-1">
+            {navItems.map(({ icon: Icon, label }) => {
+              const isActive = activeNav === label;
+              return (
+                <button
+                  key={label}
+                  onClick={() => {
+                    if (label === 'Courts') setSelectedAdminCourt(null);
+                    setActiveNav(label);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all font-semibold cursor-pointer ${
+                    isActive
+                      ? "bg-amber-400 text-amber-950 shadow-sm"
+                      : "text-white/60 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-white/10 pt-6 space-y-3">
+            <button 
+              onClick={goBack}
+              className="w-full flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-500 text-amber-950 text-sm font-bold py-3 rounded-xl transition-all shadow-md cursor-pointer"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              New Booking
+            </button>
+
+            <button 
+              onClick={fetchBookings}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold py-2.5 rounded-xl border border-white/10 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+              Refresh Data
+            </button>
+          </div>
         </nav>
 
         {/* Bottom User */}
@@ -281,291 +326,52 @@ function Dashboard({ goBack }: { goBack: () => void }) {
 
       {/* Main */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-8 py-5 flex items-center justify-between sticky top-0 z-10">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
-              {activeNav}
-            </h1>
-            <p className="text-sm font-medium text-slate-500 mt-1">
-              {format(new Date(), 'EEEE, d MMMM yyyy')}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={fetchBookings}
-              disabled={isLoading}
-              className="relative p-2.5 rounded-xl hover:bg-slate-100 transition-colors text-slate-500 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
-            </button>
-            <button 
-              onClick={goBack}
-              className="flex items-center gap-2 bg-slate-900 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-slate-800 transition-all shadow-sm cursor-pointer"
-            >
-              <Plus size={16} strokeWidth={2.5} />
-              New Booking
-            </button>
-          </div>
-        </header>
-
         {/* Body */}
-        <div className="flex-1 p-8 space-y-6 overflow-y-auto">
-          {/* Stat cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[
-              { label: "Pending Action", value: pendingCount.toString(), delta: pendingCount > 0 ? "Requires review" : "All caught up", icon: Clock, highlight: pendingCount > 0 },
-              { label: "Confirmed Bookings", value: confirmedCount.toString(), delta: "Active in Calendar", icon: CheckCircle2, highlight: false },
-              { label: "Booked Hours", value: totalSlotsCount.toString(), delta: "Total reserved slots", icon: Layers, highlight: false },
-              { label: "Estimated Revenue", value: `₱${totalRevenue.toLocaleString()}`, delta: "Based on confirmed", icon: TrendingUp, highlight: true },
-            ].map(({ label, value, delta, icon: Icon, highlight }) => (
-              <div
-                key={label}
-                className={`rounded-2xl p-6 border transition-all ${
-                  highlight && label === "Estimated Revenue"
-                    ? "bg-amber-400 border-amber-400 text-amber-950 shadow-[0_8px_20px_rgba(251,191,36,0.2)]"
-                    : highlight && label === "Pending Action"
-                    ? "bg-white border-amber-300 shadow-sm"
-                    : "bg-white border-slate-200 shadow-sm"
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className={`text-xs font-bold uppercase tracking-widest ${
-                      highlight && label === "Estimated Revenue" ? "text-amber-900/70" 
-                      : highlight && label === "Pending Action" ? "text-amber-600" 
-                      : "text-slate-500"
-                    }`}>
-                      {label}
-                    </p>
-                    <p className={`text-4xl font-black mt-2 tracking-tight ${
-                      highlight && label === "Estimated Revenue" ? "text-amber-950" : "text-slate-900"
-                    }`}>
-                      {value}
-                    </p>
-                  </div>
-                  <div className={`p-3 rounded-xl ${
-                    highlight && label === "Estimated Revenue" ? "bg-amber-300/50" 
-                    : highlight && label === "Pending Action" ? "bg-amber-50 text-amber-600"
-                    : "bg-slate-50 text-slate-500"
-                  }`}>
-                    <Icon size={20} className={
-                      highlight && label === "Estimated Revenue" ? "text-amber-950" 
-                      : highlight && label === "Pending Action" ? "text-amber-600"
-                      : "text-slate-500"
-                    } />
-                  </div>
-                </div>
-                <p className={`text-sm font-semibold mt-4 ${
-                  highlight && label === "Estimated Revenue" ? "text-amber-900/80" 
-                  : highlight && label === "Pending Action" ? "text-amber-600"
-                  : "text-slate-400"
-                }`}>
-                  {delta}
-                </p>
-              </div>
-            ))}
-          </div>
+        <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
+          {activeNav === 'Dashboard' && (
+            <DashboardView
+              bookings={bookings}
+              pendingCount={pendingCount}
+              confirmedCount={confirmedCount}
+              totalSlotsCount={totalSlotsCount}
+              totalRevenue={totalRevenue}
+              filteredBookings={filteredBookings}
+              isLoading={isLoading}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              handleConfirm={handleConfirm}
+              handleReject={handleReject}
+              actionLoadingId={actionLoadingId}
+              isDoubleBooked={isDoubleBooked}
+              setActiveNav={setActiveNav}
+              setSelectedAdminCourt={setSelectedAdminCourt}
+            />
+          )}
 
-          {/* Court availability + chart row */}
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
-            {/* Court grid */}
-            <div className="xl:col-span-3 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
-                  Facilities Status
-                </h2>
-                <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />Available</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-900 inline-block" />Occupied</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 flex-1">
-                {[1, 2, 3, 4, 5, 6].map((courtId) => {
-                  const isOccupied = false; 
-                  return (
-                    <div
-                      key={courtId}
-                      className="border border-slate-200 rounded-xl p-4 hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer group flex flex-col justify-between"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-sm font-black text-slate-900">Court {courtId}</p>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md mt-1.5 inline-block bg-slate-100 text-slate-600 uppercase tracking-wider">
-                            Padel
-                          </span>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider ${
-                          isOccupied ? "bg-slate-900 text-white" : "bg-emerald-50 text-emerald-700"
-                        }`}>
-                          {isOccupied ? "Occupied" : "Available"}
-                        </span>
-                      </div>
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-slate-500">
-                        <div className="flex items-center gap-1.5">
-                          <Clock size={14} />
-                          <span className="text-xs font-semibold">
-                            No upcoming bookings
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {activeNav === 'Bookings' && (
+            <BookingsView
+              bookings={bookings}
+              filteredBookings={filteredBookings}
+              isLoading={isLoading}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              handleConfirm={handleConfirm}
+              handleReject={handleReject}
+              actionLoadingId={actionLoadingId}
+            />
+          )}
 
-            {/* Weekly bookings chart (Tailwind CSS based) */}
-            <div className="xl:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 mb-6">
-                This Week Activity
-              </h2>
-              <div className="flex-1 flex items-end gap-3 justify-between pb-2 h-48">
-                {[
-                  { day: 'Mon', h: '0%' },
-                  { day: 'Tue', h: '0%' },
-                  { day: 'Wed', h: '0%' },
-                  { day: 'Thu', h: '0%' },
-                  { day: 'Fri', h: '0%' },
-                  { day: 'Sat', h: '0%' },
-                  { day: 'Sun', h: '0%' },
-                ].map((stat, i) => (
-                  <div key={i} className="flex flex-col items-center gap-3 w-full group cursor-pointer">
-                    <div className="w-full bg-slate-100 rounded-t-lg relative flex items-end h-full">
-                      <div 
-                        className="w-full bg-amber-400 rounded-t-md group-hover:bg-amber-300 transition-colors" 
-                        style={{ height: stat.h }}
-                      ></div>
-                    </div>
-                    <span className="text-xs font-bold text-slate-400 uppercase">{stat.day}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom row: bookings + revenue chart */}
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
-            {/* Upcoming/Managed Bookings */}
-            <div className="xl:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-                <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
-                  Manage Bookings
-                </h2>
-                
-                {/* Tabs */}
-                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 self-start sm:self-auto">
-                  {(['pending', 'confirmed', 'rejected'] as const).map(tab => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer capitalize ${
-                        activeTab === tab
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      <span>{tab}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
-                        activeTab === tab 
-                          ? tab === 'pending' ? 'bg-amber-100 text-amber-800' 
-                            : tab === 'confirmed' ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
-                          : 'bg-slate-200 text-slate-600'
-                      }`}>
-                        {bookings.filter(b => b.status === tab).length}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="relative mb-6">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search bookings..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none transition-all text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-amber-400/20 focus:border-amber-400"
-                />
-              </div>
-
-              <div className="flex-1 overflow-y-auto pr-2 space-y-3">
-                {isLoading ? (
-                  <div className="py-10 text-center text-slate-500">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3" />
-                    <p className="font-bold text-sm">Loading...</p>
-                  </div>
-                ) : filteredBookings.length === 0 ? (
-                  <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-xl">
-                    <p className="text-slate-400 font-bold text-sm">No bookings found</p>
-                  </div>
-                ) : (
-                  filteredBookings.map((b) => (
-                    <div
-                      key={b.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-sm transition-all group bg-slate-50/50 hover:bg-white"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-sm font-black text-slate-600 uppercase shrink-0">
-                          {b.name?.substring(0, 2) || "U"}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-black text-slate-900 truncate">{b.name}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                              b.status === 'pending' ? 'bg-amber-100 text-amber-800'
-                              : b.status === 'confirmed' ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-rose-100 text-rose-800'
-                            }`}>
-                              {b.status}
-                            </span>
-                            <span className="text-xs font-semibold text-slate-500">
-                              {b.slots?.length || 0} hrs requested
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 sm:gap-1 pl-14 sm:pl-0">
-                        <p className="text-sm font-black text-slate-900">
-                          ₱{((b.slots?.length || 0) * 500).toLocaleString()}
-                        </p>
-                        
-                        {b.status === 'pending' && (
-                          <div className="flex items-center gap-3 mt-1 sm:mt-2">
-                            <button
-                              onClick={() => handleReject(b.id)}
-                              disabled={actionLoadingId !== null}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors font-semibold text-sm disabled:opacity-50"
-                              title="Reject"
-                            >
-                              <X size={15} strokeWidth={2.5} className="text-slate-400 group-hover:text-rose-600" />
-                              <span>Reject</span>
-                            </button>
-                            <button
-                              onClick={() => handleConfirm(b.id)}
-                              disabled={actionLoadingId !== null}
-                              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-semibold text-sm transition-all duration-200 disabled:opacity-50 shadow-sm"
-                              title="Confirm Booking"
-                            >
-                              {actionLoadingId === b.id ? (
-                                <RefreshCw size={15} className="animate-spin text-white" />
-                              ) : (
-                                <Check size={15} strokeWidth={2.5} />
-                              )}
-                              <span>Confirm Booking</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          {activeNav === 'Courts' && (
+            <CourtsView
+              bookings={bookings}
+              selectedAdminCourt={selectedAdminCourt}
+              setSelectedAdminCourt={setSelectedAdminCourt}
+            />
+          )}
         </div>
       </main>
     </div>
@@ -1592,7 +1398,7 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-800">Awaiting Confirmation</h3>
-                    <p className="text-slate-500 font-medium text-xs mt-1">Your reservation request has been submitted. It is currently awaiting approval from the owner. You will receive an email notification once confirmed or rejected.</p>
+                    <p className="text-slate-500 font-medium text-xs mt-1">Your reservation request has been submitted. You will receive a notification once confirmed or rejected.</p>
                   </div>
 
                   <div className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-left text-sm space-y-3 font-semibold text-slate-700 max-h-[220px] overflow-y-auto">
