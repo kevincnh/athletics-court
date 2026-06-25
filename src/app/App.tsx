@@ -51,10 +51,19 @@ function Dashboard({ goBack }: { goBack: () => void }) {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'confirmed' | 'rejected'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
+  const [focusedBookingId, setFocusedBookingId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [selectedAdminCourt, setSelectedAdminCourt] = useState<number | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    confirmVariant?: 'confirm' | 'reject';
+  } | null>(null);
 
   const isDoubleBooked = (booking: any) => {
     if (booking.status !== 'pending') return false;
@@ -119,49 +128,135 @@ function Dashboard({ goBack }: { goBack: () => void }) {
   };
 
   const handleConfirm = async (id: string) => {
-    if (!confirm('Are you sure you want to confirm this booking? This will schedule the event on Google Calendar and send a confirmation email.')) return;
-    setActionLoadingId(id);
-    setErrorMessage('');
-    try {
-      const res = await fetch('/api/bookings/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: id })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchBookings();
-      } else {
-        alert(data.error || 'Failed to confirm booking');
+    setConfirmModal({
+      isOpen: true,
+      title: "Confirm Booking",
+      message: "Are you sure you want to confirm this booking? This will schedule the event on Google Calendar and send a confirmation email.",
+      confirmText: "Confirm",
+      confirmVariant: "confirm",
+      onConfirm: async () => {
+        setActionLoadingId(id);
+        setErrorMessage('');
+        try {
+          const res = await fetch('/api/bookings/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: id })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchBookings();
+          } else {
+            alert(data.error || 'Failed to confirm booking');
+          }
+        } catch (err: any) {
+          alert(err.message || 'Error confirming booking');
+        } finally {
+          setActionLoadingId(null);
+          setConfirmModal(null);
+        }
       }
-    } catch (err: any) {
-      alert(err.message || 'Error confirming booking');
-    } finally {
-      setActionLoadingId(null);
-    }
+    });
   };
 
   const handleReject = async (id: string) => {
-    if (!confirm('Are you sure you want to reject this booking? This will send a decline notification email.')) return;
-    setActionLoadingId(id);
-    setErrorMessage('');
-    try {
-      const res = await fetch('/api/bookings/reject', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: id })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchBookings();
-      } else {
-        alert(data.error || 'Failed to reject booking');
+    const booking = bookings.find(b => b.id === id);
+    const isConfirmed = booking?.status === 'confirmed';
+    setConfirmModal({
+      isOpen: true,
+      title: isConfirmed ? "Cancel Confirmed Booking" : "Reject Booking",
+      message: isConfirmed 
+        ? "Are you sure you want to cancel this confirmed booking? This will remove the events from Google Calendar and send a cancellation email."
+        : "Are you sure you want to reject this booking? This will send a decline notification email.",
+      confirmText: isConfirmed ? "Cancel Booking" : "Reject",
+      confirmVariant: "reject",
+      onConfirm: async () => {
+        setActionLoadingId(id);
+        setErrorMessage('');
+        try {
+          const res = await fetch('/api/bookings/reject', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: id })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchBookings();
+          } else {
+            alert(data.error || 'Failed to reject booking');
+          }
+        } catch (err: any) {
+          alert(err.message || 'Error rejecting booking');
+        } finally {
+          setActionLoadingId(null);
+          setConfirmModal(null);
+        }
       }
-    } catch (err: any) {
-      alert(err.message || 'Error rejecting booking');
-    } finally {
-      setActionLoadingId(null);
-    }
+    });
+  };
+
+  const handleResolveSlotConflict = async (confirmBookingId: string, court: number, date: string, timeSlot: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Resolve Conflict Slot",
+      message: `Are you sure you want to confirm this slot (Court ${court} on ${date} @ ${timeSlot})? This will schedule the slot on Google Calendar and reject other pending requests for this slot.`,
+      confirmText: "Confirm Slot",
+      confirmVariant: "confirm",
+      onConfirm: async () => {
+        setActionLoadingId(`${confirmBookingId}-${court}-${date}-${timeSlot}`);
+        setErrorMessage('');
+        try {
+          const res = await fetch('/api/bookings/resolve-slot-conflict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmBookingId, court, date, timeSlot })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchBookings();
+          } else {
+            alert(data.error || 'Failed to resolve slot conflict');
+          }
+        } catch (err: any) {
+          alert(err.message || 'Error resolving slot conflict');
+        } finally {
+          setActionLoadingId(null);
+          setConfirmModal(null);
+        }
+      }
+    });
+  };
+
+  const handleCancelSlot = async (bookingId: string, court: number, date: string, timeSlot: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Cancel Slot",
+      message: `Are you sure you want to cancel this individual slot (Court ${court} on ${date} @ ${timeSlot})? This will remove it from Google Calendar.`,
+      confirmText: "Cancel Slot",
+      confirmVariant: "reject",
+      onConfirm: async () => {
+        setActionLoadingId(`${bookingId}-${court}-${date}-${timeSlot}`);
+        setErrorMessage('');
+        try {
+          const res = await fetch('/api/bookings/cancel-slot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId, court, date, timeSlot })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchBookings();
+          } else {
+            alert(data.error || 'Failed to cancel slot');
+          }
+        } catch (err: any) {
+          alert(err.message || 'Error canceling slot');
+        } finally {
+          setActionLoadingId(null);
+          setConfirmModal(null);
+        }
+      }
+    });
   };
 
   // Stats calculation
@@ -174,6 +269,8 @@ function Dashboard({ goBack }: { goBack: () => void }) {
 
   // Filter bookings
   const filteredBookings = bookings.filter(b => {
+    if (focusedBookingId && b.id !== focusedBookingId) return false;
+    
     const matchesTab = b.status === activeTab;
     if (!matchesTab) return false;
 
@@ -335,14 +432,11 @@ function Dashboard({ goBack }: { goBack: () => void }) {
               confirmedCount={confirmedCount}
               totalSlotsCount={totalSlotsCount}
               totalRevenue={totalRevenue}
-              filteredBookings={filteredBookings}
               isLoading={isLoading}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
               handleConfirm={handleConfirm}
               handleReject={handleReject}
+              handleResolveSlotConflict={handleResolveSlotConflict}
+              handleCancelSlot={handleCancelSlot}
               actionLoadingId={actionLoadingId}
               isDoubleBooked={isDoubleBooked}
               setActiveNav={setActiveNav}
@@ -361,7 +455,11 @@ function Dashboard({ goBack }: { goBack: () => void }) {
               setSearchQuery={setSearchQuery}
               handleConfirm={handleConfirm}
               handleReject={handleReject}
+              handleResolveSlotConflict={handleResolveSlotConflict}
+              handleCancelSlot={handleCancelSlot}
               actionLoadingId={actionLoadingId}
+              focusedBookingId={focusedBookingId}
+              setFocusedBookingId={setFocusedBookingId}
             />
           )}
 
@@ -370,10 +468,65 @@ function Dashboard({ goBack }: { goBack: () => void }) {
               bookings={bookings}
               selectedAdminCourt={selectedAdminCourt}
               setSelectedAdminCourt={setSelectedAdminCourt}
+              setActiveNav={setActiveNav}
+              setSearchQuery={setSearchQuery}
+              setActiveTab={setActiveTab}
+              setFocusedBookingId={setFocusedBookingId}
+              handleConfirm={handleConfirm}
+              handleReject={handleReject}
+              actionLoadingId={actionLoadingId}
             />
           )}
         </div>
       </main>
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal && confirmModal.isOpen && (
+        <div 
+          onClick={() => setConfirmModal(null)}
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 p-4"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+          >
+            <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="font-bold text-slate-800 uppercase tracking-widest text-xs">
+                {confirmModal.title}
+              </h3>
+              <button 
+                onClick={() => setConfirmModal(null)} 
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm font-semibold text-slate-600 leading-relaxed">
+                {confirmModal.message}
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className={`px-4 py-2 text-white rounded-xl font-bold text-xs shadow-sm transition-colors cursor-pointer ${
+                  confirmModal.confirmVariant === 'reject'
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {confirmModal.confirmText || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

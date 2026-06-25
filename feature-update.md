@@ -19,7 +19,12 @@ This document details the functional specifications for introducing a booking co
   - **Courts**: A timeline calendar view summarizing the availability across all 6 courts for a specific date, highlighting Available, Pending, and Confirmed timeslots.
 * **Functionality**:
   - View all reservations with details (Customer Name, Phone, Email, Message, Courts, Dates, Times, Status, Total Revenue).
+  - **Partial Cancellations/Rejections**: Multi-slot batch bookings track statuses at a granular slot level. The owner can cancel/reject individual slots within a booking without rejecting the entire batch booking. The total amount due dynamically recalculates.
   - Action buttons: **Confirm** or **Reject** pending reservations (via the Bookings tab or non-conflicting Dashboard entries).
+  - **Shorter Booking IDs**: IDs are generated in a highly readable `YYMMDD-XXXX` format (e.g. `241215-A1B2`) rather than standard UUIDs.
+  - **Explicit Search Action**: The Bookings tab search input does not filter instant keystrokes automatically. It requires clicking a dedicated "Search" button or pressing the `Enter` key. A clear button (`X`) is nested inside the input to clear and reset the search query.
+  - **Cohesive Date Picker**: The Courts view date selection operates via a custom Popover Calendar widget. The navigation is housed in a single seamless pill where the Left/Right chevrons are grouped together and the date text serves as a button that triggers a custom calendar card.
+  - **Click-Outside Modal Dismissal**: Custom overlay modals (Booking Details and Conflict Details) close instantly when the user clicks anywhere on the dark backdrop overlay outside of the modal card. Clicks inside the card do not close the modal.
 
 ### 3. Notification Flows
 * **Awaiting Confirmation**:

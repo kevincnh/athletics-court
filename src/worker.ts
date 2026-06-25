@@ -47,7 +47,7 @@ export default {
         const { results } = await env.DB.prepare(`
           SELECT 
             b.id, b.name, b.email, b.phone, b.message, b.status, b.created_at,
-            r.court, r.date, r.time_slot
+            r.court, r.date, r.time_slot, r.status as slot_status
           FROM bookings b
           LEFT JOIN reserved_slots r ON b.id = r.booking_id
           ORDER BY b.created_at DESC
@@ -72,7 +72,8 @@ export default {
             bookingsMap[row.id].slots.push({
               court: row.court,
               date: row.date,
-              timeSlot: row.time_slot
+              timeSlot: row.time_slot,
+              status: row.slot_status || 'pending'
             });
           }
         }
@@ -130,11 +131,11 @@ export default {
         // 3. Update Status
         await env.DB.prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ?1").bind(bookingId).run();
 
-        // 3.5 Auto-reject conflicting pending bookings
+        // 3.5 Safely remove conflicting slots from other pending bookings
         const conflictQuery = `
-          SELECT DISTINCT b.id, b.name, b.email
-          FROM bookings b
-          JOIN reserved_slots rs ON b.id = rs.booking_id
+          SELECT rs.id as slot_id, b.id as booking_id, b.name, b.email
+          FROM reserved_slots rs
+          JOIN bookings b ON rs.booking_id = b.id
           WHERE b.status = 'pending' AND b.id != ?1
             AND EXISTS (
               SELECT 1 FROM reserved_slots current_rs
@@ -144,35 +145,44 @@ export default {
                 AND current_rs.time_slot = rs.time_slot
             )
         `;
-        const { results: conflictingBookings } = await env.DB.prepare(conflictQuery).bind(bookingId).all();
+        const { results: conflictingSlots } = await env.DB.prepare(conflictQuery).bind(bookingId).all();
 
-        for (const conf of conflictingBookings) {
-          // Reject in DB
-          await env.DB.prepare("UPDATE bookings SET status = 'rejected' WHERE id = ?1").bind(conf.id).run();
-          
-          // Send Rejection Email
-          if (conf.email && (conf.email as string).trim()) {
-            const emailHeaderHtml = `
-              <div style="text-align: center; margin-bottom: 25px; margin-top: -20px;">
-                <span style="background-color: #1e293b; color: #ffffff; padding: 10px 30px; border-radius: 0 0 16px 16px; font-weight: 900; font-size: 16px; letter-spacing: 2.5px; display: inline-block; font-family: 'Montserrat', 'Arial Black', sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                  <span style="color: #f59e0b;">THE</span> PADDLE CLUB
-                </span>
-              </div>
-            `;
-            const emailSubject = `Update on Reservation Request - The Paddle Club`;
-            const emailBody = `
-              <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff;">
-                ${emailHeaderHtml}
-                <h2 style="color: #ef4444; margin-top: 15px; padding-bottom: 10px; border-bottom: 2px solid #ef4444; font-size: 20px;">Reservation Declined</h2>
-                <p>Hi <strong>${conf.name}</strong>,</p>
-                <p>We regret to inform you that your reservation request at <strong>The Paddle Club</strong> has been declined. Unfortunately, the selected slots are unavailable or have been fully booked.</p>
-                <p>Please feel free to submit a new reservation request on our website for alternative timeslots.</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin-top: 30px;">
-                <p style="font-size: 12px; color: #777; text-align: center;">The Paddle Club &bull; Indoor Court Selector &bull; Auto-generated Notification</p>
-              </div>
-            `;
-            const rawEmail = buildRawEmail(conf.email as string, env.GOOGLE_CALENDAR_ID, emailSubject, emailBody);
-            await sendEmail(accessToken, rawEmail);
+        for (const conf of conflictingSlots) {
+          // 1. Mark the specific conflicting slot as rejected instead of deleting it
+          await env.DB.prepare("UPDATE reserved_slots SET status = 'rejected' WHERE id = ?1").bind(conf.slot_id).run();
+
+          // 2. Check if this pending booking has any NON-rejected slots left
+          const remaining = await env.DB.prepare("SELECT COUNT(*) as count FROM reserved_slots WHERE booking_id = ?1 AND status != 'rejected'").bind(conf.booking_id).first();
+          const remainingCount = (remaining?.count as number) || 0;
+
+          if (remainingCount === 0) {
+            // Reject in DB entirely if no slots are left
+            await env.DB.prepare("UPDATE bookings SET status = 'rejected' WHERE id = ?1").bind(conf.booking_id).run();
+            
+            // Send Rejection Email
+            if (conf.email && (conf.email as string).trim()) {
+              const emailHeaderHtml = `
+                <div style="text-align: center; margin-bottom: 25px; margin-top: -20px;">
+                  <span style="background-color: #1e293b; color: #ffffff; padding: 10px 30px; border-radius: 0 0 16px 16px; font-weight: 900; font-size: 16px; letter-spacing: 2.5px; display: inline-block; font-family: 'Montserrat', 'Arial Black', sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <span style="color: #f59e0b;">THE</span> PADDLE CLUB
+                  </span>
+                </div>
+              `;
+              const emailSubject = `Update on Reservation Request - The Paddle Club`;
+              const emailBody = `
+                <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff;">
+                  ${emailHeaderHtml}
+                  <h2 style="color: #ef4444; margin-top: 15px; padding-bottom: 10px; border-bottom: 2px solid #ef4444; font-size: 20px;">Reservation Declined</h2>
+                  <p>Hi <strong>${conf.name}</strong>,</p>
+                  <p>We regret to inform you that your reservation request at <strong>The Paddle Club</strong> has been declined. Unfortunately, the selected slots are unavailable or have been fully booked.</p>
+                  <p>Please feel free to submit a new reservation request on our website for alternative timeslots.</p>
+                  <hr style="border: 0; border-top: 1px solid #eee; margin-top: 30px;">
+                  <p style="font-size: 12px; color: #777; text-align: center;">The Paddle Club &bull; Indoor Court Selector &bull; Auto-generated Notification</p>
+                </div>
+              `;
+              const rawEmail = buildRawEmail(conf.email as string, env.GOOGLE_CALENDAR_ID, emailSubject, emailBody);
+              await sendEmail(accessToken, rawEmail);
+            }
           }
         }
 
@@ -260,8 +270,22 @@ export default {
           return jsonResponse({ success: true, message: "Booking already rejected" });
         }
 
+        // If booking is confirmed, delete its events from Google Calendar
+        if (booking.status === "confirmed") {
+          const { results: slots } = await env.DB.prepare("SELECT * FROM reserved_slots WHERE booking_id = ?1").bind(bookingId).all();
+          const accessToken = await getAccessToken(env);
+          for (const slot of slots) {
+            if (slot.calendar_event_id) {
+              await deleteCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, slot.calendar_event_id);
+            }
+          }
+          // Clear calendar event IDs
+          await env.DB.prepare("UPDATE reserved_slots SET calendar_event_id = NULL WHERE booking_id = ?1").bind(bookingId).run();
+        }
+
         // Update status in D1
         await env.DB.prepare("UPDATE bookings SET status = 'rejected' WHERE id = ?1").bind(bookingId).run();
+        await env.DB.prepare("UPDATE reserved_slots SET status = 'rejected' WHERE booking_id = ?1").bind(bookingId).run();
 
         // Send Rejection Email to Client
         if (booking.email && booking.email.trim()) {
@@ -297,12 +321,277 @@ export default {
       }
     }
 
+    // 4.5 POST /api/bookings/resolve-slot-conflict
+    if (url.pathname === "/api/bookings/resolve-slot-conflict" && request.method === "POST") {
+      try {
+        const { confirmBookingId, court, date, timeSlot } = await request.json();
+        if (!confirmBookingId || court === undefined || !date || !timeSlot) {
+          return jsonResponse({ error: "Missing required parameters" }, 400);
+        }
+
+        // 1. Fetch the confirmed booking info
+        const booking = await env.DB.prepare("SELECT * FROM bookings WHERE id = ?1").bind(confirmBookingId).first();
+        if (!booking) return jsonResponse({ error: "Booking not found" }, 404);
+
+        // 2. Fetch all slots for this booking to see if we need to split it
+        const { results: slots } = await env.DB.prepare("SELECT * FROM reserved_slots WHERE booking_id = ?1").bind(confirmBookingId).all();
+        if (slots.length === 0) return jsonResponse({ error: "No slots found for confirmBookingId" }, 404);
+
+        // Find the specific slot we are confirming
+        const targetSlot = slots.find(s => String(s.court) === String(court) && s.date === date && s.time_slot === timeSlot);
+        if (!targetSlot) return jsonResponse({ error: "Specified slot not found in confirmBookingId" }, 404);
+
+        // Get Google Access Token for calendar and email
+        const accessToken = await getAccessToken(env);
+
+        let finalConfirmedBookingId = confirmBookingId;
+
+        if (slots.length === 1) {
+          // If the booking only has this one slot, we can confirm the entire booking directly.
+          await env.DB.prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ?1").bind(confirmBookingId).run();
+        } else {
+          // If the booking has multiple slots, we split it:
+          // Create a new confirmed booking copying the details.
+          const newBookingId = crypto.randomUUID();
+          await env.DB.prepare(`
+            INSERT INTO bookings (id, name, email, phone, message, status, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, 'confirmed', ?6)
+          `).bind(
+            newBookingId,
+            booking.name,
+            booking.email || null,
+            booking.phone,
+            booking.message || null,
+            booking.created_at || new Date().toISOString()
+          ).run();
+
+          // Move the confirmed slot to the new booking ID
+          await env.DB.prepare("UPDATE reserved_slots SET booking_id = ?1 WHERE id = ?2")
+            .bind(newBookingId, targetSlot.id)
+            .run();
+
+          finalConfirmedBookingId = newBookingId;
+        }
+
+        // 3. Create Google Calendar Event for this confirmed slot
+        const startDateTime = parseDateTime(date, timeSlot);
+        const endDateTime = getEndTime(startDateTime);
+        const eventDetails = {
+          summary: `Court ${court} Booking - ${booking.name}`,
+          description: `Contact Number: ${booking.phone}\nEmail: ${booking.email || 'None'}\nNotes: ${booking.message || 'None'}\nBooking ID: ${finalConfirmedBookingId}`,
+          start: {
+            dateTime: startDateTime,
+            timeZone: "Asia/Manila",
+          },
+          end: {
+            dateTime: endDateTime,
+            timeZone: "Asia/Manila",
+          },
+        };
+
+        const event = await createCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, eventDetails);
+        
+        // Save calendar event ID in D1
+        await env.DB.prepare("UPDATE reserved_slots SET calendar_event_id = ?1 WHERE booking_id = ?2 AND court = ?3 AND date = ?4 AND time_slot = ?5")
+          .bind(event.id, finalConfirmedBookingId, court, date, timeSlot)
+          .run();
+
+        // 4. Send Confirmation Email to Client for this slot
+        if (booking.email && (booking.email as string).trim()) {
+          const emailHeaderHtml = `
+            <div style="text-align: center; margin-bottom: 25px; margin-top: -20px;">
+              <span style="background-color: #1e293b; color: #ffffff; padding: 10px 30px; border-radius: 0 0 16px 16px; font-weight: 900; font-size: 16px; letter-spacing: 2.5px; display: inline-block; font-family: 'Montserrat', 'Arial Black', sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <span style="color: #f59e0b;">THE</span> PADDLE CLUB
+              </span>
+            </div>
+          `;
+          const emailSubject = `Reservation Confirmed - The Paddle Club`;
+          const emailBody = `
+            <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff;">
+              ${emailHeaderHtml}
+              <h2 style="color: #10b981; margin-top: 15px; padding-bottom: 10px; border-bottom: 2px solid #10b981; font-size: 20px;">Reservation Confirmed</h2>
+              <p>Hi <strong>${booking.name}</strong>,</p>
+              <p>Great news! Your reservation request at <strong>The Paddle Club</strong> has been confirmed. Below are your booking details:</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+                <tr style="background-color: #f8fafc;">
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold; width: 40%;">Court</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">Court ${court}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Date</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${date}</td>
+                </tr>
+                <tr style="background-color: #f8fafc;">
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Time Slot</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${timeSlot}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Contact Number</td>
+                  <td style="padding: 8px; border-bottom: 1px solid #ddd;">${booking.phone}</td>
+                </tr>
+              </table>
+              <p>Please arrive 10 minutes before your schedule. We look forward to seeing you!</p>
+              <hr style="border: 0; border-top: 1px solid #eee; margin-top: 30px;">
+              <p style="font-size: 12px; color: #777; text-align: center;">The Paddle Club &bull; Indoor Court Selector &bull; Auto-generated Confirmation</p>
+            </div>
+          `;
+          const rawEmail = buildRawEmail(booking.email, env.GOOGLE_CALENDAR_ID, emailSubject, emailBody);
+          await sendEmail(accessToken, rawEmail);
+        }
+
+        // 5. Identify and reject/delete this slot from all other pending bookings
+        const { results: conflictingSlots } = await env.DB.prepare(`
+          SELECT rs.id, rs.booking_id, b.name, b.email
+          FROM reserved_slots rs
+          JOIN bookings b ON rs.booking_id = b.id
+          WHERE b.status = 'pending'
+            AND rs.booking_id != ?1
+            AND rs.court = ?2
+            AND rs.date = ?3
+            AND rs.time_slot = ?4
+        `).bind(confirmBookingId, court, date, timeSlot).all();
+
+        for (const conf of conflictingSlots) {
+          // Mark this specific slot as rejected instead of deleting it
+          await env.DB.prepare("UPDATE reserved_slots SET status = 'rejected' WHERE id = ?1").bind(conf.id).run();
+
+          // Check if that pending booking has any NON-rejected slots left
+          const remaining = await env.DB.prepare("SELECT COUNT(*) as count FROM reserved_slots WHERE booking_id = ?1 AND status != 'rejected'").bind(conf.booking_id).first();
+          const remainingCount = (remaining?.count as number) || 0;
+
+          if (remainingCount === 0) {
+            // Reject the booking entirely since no slots are left
+            await env.DB.prepare("UPDATE bookings SET status = 'rejected' WHERE id = ?1").bind(conf.booking_id).run();
+
+            // Send rejection email to client
+            if (conf.email && (conf.email as string).trim()) {
+              const emailHeaderHtml = `
+                <div style="text-align: center; margin-bottom: 25px; margin-top: -20px;">
+                  <span style="background-color: #1e293b; color: #ffffff; padding: 10px 30px; border-radius: 0 0 16px 16px; font-weight: 900; font-size: 16px; letter-spacing: 2.5px; display: inline-block; font-family: 'Montserrat', 'Arial Black', sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <span style="color: #f59e0b;">THE</span> PADDLE CLUB
+                  </span>
+                </div>
+              `;
+              const emailSubject = `Update on Reservation Request - The Paddle Club`;
+              const emailBody = `
+                <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff;">
+                  ${emailHeaderHtml}
+                  <h2 style="color: #ef4444; margin-top: 15px; padding-bottom: 10px; border-bottom: 2px solid #ef4444; font-size: 20px;">Reservation Declined</h2>
+                  <p>Hi <strong>${conf.name}</strong>,</p>
+                  <p>We regret to inform you that your reservation request at <strong>The Paddle Club</strong> has been declined. Unfortunately, the selected slots are unavailable or have been fully booked.</p>
+                  <p>Please feel free to submit a new reservation request on our website for alternative timeslots.</p>
+                  <hr style="border: 0; border-top: 1px solid #eee; margin-top: 30px;">
+                  <p style="font-size: 12px; color: #777; text-align: center;">The Paddle Club &bull; Indoor Court Selector &bull; Auto-generated Notification</p>
+                </div>
+              `;
+              const rawEmail = buildRawEmail(conf.email as string, env.GOOGLE_CALENDAR_ID, emailSubject, emailBody);
+              await sendEmail(accessToken, rawEmail);
+            }
+          }
+        }
+
+        return jsonResponse({ success: true });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message || "Failed to resolve slot conflict" }, 500);
+      }
+    }
+
+    // 4.5.4 POST /api/admin/add-slot-status
+    if (url.pathname === "/api/admin/add-slot-status" && request.method === "POST") {
+      try {
+        await env.DB.prepare("ALTER TABLE reserved_slots ADD COLUMN status TEXT DEFAULT 'pending'").run();
+        return jsonResponse({ success: true, message: "status column added to reserved_slots" });
+      } catch (err: any) {
+        // Might fail if column already exists, which is fine
+        return jsonResponse({ error: err.message || "Failed to alter table" }, 500);
+      }
+    }
+
+    // 4.5.5 POST /api/admin/migrate-ids
+    if (url.pathname === "/api/admin/migrate-ids" && request.method === "POST") {
+      try {
+        const { results } = await env.DB.prepare("SELECT * FROM bookings WHERE length(id) > 15").all();
+        
+        const statements = [];
+        for (const b of results) {
+          const oldId = b.id as string;
+          const createdAt = new Date((b.created_at as string) || new Date().toISOString());
+          const dateStr = createdAt.toISOString().slice(2, 10).replace(/-/g, '');
+          const uid = crypto.randomUUID().substring(0, 4).toUpperCase();
+          const newId = `${dateStr}-${uid}`;
+
+          // 1. Create duplicate booking with the new ID
+          statements.push(
+            env.DB.prepare("INSERT INTO bookings (id, name, email, phone, message, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+              .bind(newId, b.name, b.email, b.phone, b.message, b.status, b.created_at)
+          );
+          
+          // 2. Transfer all reserved slots to the new booking ID
+          statements.push(
+            env.DB.prepare("UPDATE reserved_slots SET booking_id = ?1 WHERE booking_id = ?2").bind(newId, oldId)
+          );
+          
+          // 3. Delete the old booking row safely
+          statements.push(
+            env.DB.prepare("DELETE FROM bookings WHERE id = ?1").bind(oldId)
+          );
+        }
+
+        if (statements.length > 0) {
+          await env.DB.batch(statements);
+        }
+
+        return jsonResponse({ success: true, migratedCount: results.length });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message || "Failed to migrate IDs" }, 500);
+      }
+    }
+
+    // 4.6 POST /api/bookings/cancel-slot
+    if (url.pathname === "/api/bookings/cancel-slot" && request.method === "POST") {
+      try {
+        const { bookingId, court, date, timeSlot } = await request.json();
+        if (!bookingId || court === undefined || !date || !timeSlot) {
+          return jsonResponse({ error: "Missing required parameters" }, 400);
+        }
+
+        const booking = await env.DB.prepare("SELECT * FROM bookings WHERE id = ?1").bind(bookingId).first();
+        if (!booking) return jsonResponse({ error: "Booking not found" }, 404);
+
+        const targetSlot = await env.DB.prepare("SELECT * FROM reserved_slots WHERE booking_id = ?1 AND court = ?2 AND date = ?3 AND time_slot = ?4")
+          .bind(bookingId, court, date, timeSlot).first();
+
+        if (!targetSlot) return jsonResponse({ error: "Slot not found" }, 404);
+
+        if (booking.status === "confirmed" && targetSlot.calendar_event_id) {
+          const accessToken = await getAccessToken(env);
+          await deleteCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, targetSlot.calendar_event_id);
+        }
+
+        await env.DB.prepare("UPDATE reserved_slots SET status = 'rejected' WHERE id = ?1").bind(targetSlot.id).run();
+
+        const remaining = await env.DB.prepare("SELECT COUNT(*) as count FROM reserved_slots WHERE booking_id = ?1 AND status != 'rejected'").bind(bookingId).first();
+        const remainingCount = (remaining?.count as number) || 0;
+
+        if (remainingCount === 0) {
+          await env.DB.prepare("UPDATE bookings SET status = 'rejected' WHERE id = ?1").bind(bookingId).run();
+        }
+
+        return jsonResponse({ success: true });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message || "Failed to cancel slot" }, 500);
+      }
+    }
+
     // 5. POST /api/book (Original submission revised for D1 Pending states)
     if (url.pathname === "/api/book" && request.method === "POST") {
       try {
         const { bookings, name, email, phone, message } = await request.json();
-        const bookingId = crypto.randomUUID();
-        const createdAt = new Date().toISOString();
+        const now = new Date();
+        const dateStr = now.toISOString().slice(2, 10).replace(/-/g, '');
+        const uid = crypto.randomUUID().substring(0, 4).toUpperCase();
+        const bookingId = `${dateStr}-${uid}`;
+        const createdAt = now.toISOString();
 
         // Calculate bookings details
         let emailBookingsHtml = "";
@@ -499,8 +788,17 @@ function getEndTime(startDateTimeStr: string): string {
   return `${y}-${m}-${d}T${hh}:${mm}:00`;
 }
 
-// Helper: Create Google Calendar Event
-async function createCalendarEvent(accessToken: string, calendarId: string, eventDetails: any) {
+// Helper: Sleep promise
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Helper: Create Google Calendar Event with exponential backoff retries
+async function createCalendarEvent(
+  accessToken: string,
+  calendarId: string,
+  eventDetails: any,
+  retries = 3,
+  delay = 1000
+): Promise<any> {
   const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
     method: "POST",
     headers: {
@@ -509,11 +807,42 @@ async function createCalendarEvent(accessToken: string, calendarId: string, even
     },
     body: JSON.stringify(eventDetails),
   });
-  const data: any = await response.json();
+  
   if (!response.ok) {
-    throw new Error(`Google Calendar error: ${data.error?.message || 'Failed to create event'}`);
+    const data: any = await response.json().catch(() => ({}));
+    const message = data.error?.message || "";
+    
+    // Check if error is due to rate limits (Too Many Requests 429 or Forbidden 403 rateLimitExceeded)
+    const isRateLimit = response.status === 429 || 
+                        response.status === 403 && (
+                          message.includes("rateLimitExceeded") || 
+                          message.includes("Rate Limit Exceeded") || 
+                          message.includes("userRateLimitExceeded")
+                        );
+                        
+    if (isRateLimit && retries > 0) {
+      await sleep(delay);
+      return createCalendarEvent(accessToken, calendarId, eventDetails, retries - 1, delay * 2);
+    }
+    
+    throw new Error(`Google Calendar error: ${message || 'Failed to create event'}`);
   }
-  return data;
+  
+  return await response.json();
+}
+
+// Helper: Delete Google Calendar Event
+async function deleteCalendarEvent(accessToken: string, calendarId: string, eventId: string) {
+  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+    },
+  });
+  if (!response.ok && response.status !== 404) { // Ignore 404 if already deleted
+    const data: any = await response.json().catch(() => ({}));
+    throw new Error(`Google Calendar delete error: ${data.error?.message || 'Failed'}`);
+  }
 }
 
 // Helper: Format ISO YYYY-MM-DD into a friendly string (e.g. June 23, 2026)

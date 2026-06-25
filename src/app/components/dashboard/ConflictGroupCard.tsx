@@ -1,16 +1,16 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { X, Check, RefreshCw, AlertTriangle, User, Phone, Mail, Calendar, MapPin, Clock } from 'lucide-react';
+import { AlertTriangle, Check, RefreshCw, User, Phone, Mail, Calendar, MapPin, Clock } from 'lucide-react';
 
 export function ConflictGroupCard({
   bookings,
   handleConfirm,
   handleReject,
+  handleResolveSlotConflict,
   actionLoadingId
 }: any) {
   // All bookings in the group conflict. Let's find the conflicting slots to display in the header banner.
-  // We can collect unique slots (court, date, timeSlot) that are shared between them.
-  const conflictSlots: string[] = [];
+  const conflictSlotsData: { court: number; date: string; timeSlot: string; key: string }[] = [];
   const slotsMap = new Map<string, number>();
 
   bookings.forEach((b: any) => {
@@ -24,7 +24,12 @@ export function ConflictGroupCard({
   for (const [key, count] of slotsMap.entries()) {
     if (count > 1) {
       const [court, date, timeSlot] = key.split('|');
-      conflictSlots.push(`Court ${court} on ${date} @ ${timeSlot}`);
+      conflictSlotsData.push({
+        court: Number(court),
+        date,
+        timeSlot,
+        key
+      });
     }
   }
 
@@ -42,7 +47,7 @@ export function ConflictGroupCard({
     <div className="border-2 border-amber-300 rounded-2xl bg-amber-50/20 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       {/* Header Banner */}
       <div className="bg-amber-500/10 border-b border-amber-200 px-5 py-3 flex items-center gap-3">
-        <div className="p-1.5 rounded-lg bg-amber-505 bg-amber-500 text-amber-950">
+        <div className="p-1.5 rounded-lg bg-amber-500 text-amber-950">
           <AlertTriangle size={18} className="stroke-[2.5]" />
         </div>
         <div>
@@ -50,113 +55,105 @@ export function ConflictGroupCard({
             Booking Conflict Detected ({bookings.length} Requests)
           </h3>
           <p className="text-xs font-semibold text-amber-700 mt-0.5">
-            The following requests overlap on: <span className="font-extrabold">{conflictSlots.join('; ')}</span>
+            Resolve conflicts per slot below. Confirming a slot dynamically confirms it for that request and auto-rejects/removes it from others.
           </p>
         </div>
       </div>
 
-      {/* Grid of overlapping bookings */}
-      <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5 divide-y lg:divide-y-0 lg:divide-x divide-amber-200/55">
-        {bookings.map((b: any, index: number) => {
-          const createdAtFormatted = b.createdAt ? format(new Date(b.createdAt), "MMM d, h:mm a") : 'N/A';
-          const shortId = b.id.substring(0, 3).toUpperCase();
-          const totalSlots = b.slots?.length || 0;
-          const totalPrice = totalSlots * 500;
-
-          // Group slots by court
-          const slotsByCourt = b.slots?.reduce((acc: any, slot: any) => {
-            if (!acc[slot.court]) acc[slot.court] = [];
-            acc[slot.court].push(slot);
-            return acc;
-          }, {}) || {};
+      {/* Grid of Conflicting Slots */}
+      <div className="p-5 space-y-6">
+        {conflictSlotsData.map(({ court, date, timeSlot, key }) => {
+          // Find all bookings that requested this specific slot
+          const slotBookings = bookings.filter((b: any) =>
+            b.slots?.some((s: any) => String(s.court) === String(court) && s.date === date && s.timeSlot === timeSlot)
+          );
 
           return (
-            <div key={b.id} className={`flex flex-col justify-between gap-4 ${index > 0 ? 'pt-5 lg:pt-0 lg:pl-5' : ''}`}>
-              <div className="space-y-4">
-                {/* Header info */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-black text-slate-900">#{shortId}</span>
-                    <span className="text-xs font-semibold text-slate-500">
-                      Submitted: {createdAtFormatted}
-                    </span>
-                  </div>
-                  <span className="text-lg font-black text-slate-900">₱{totalPrice.toLocaleString()}</span>
+            <div key={key} className="border border-amber-200/80 rounded-xl bg-white overflow-hidden shadow-sm">
+              {/* Conflicting Slot Title */}
+              <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></div>
+                  <span className="font-extrabold text-sm text-slate-800">
+                    Court {court} &bull; {formatDate(date)} &bull; {timeSlot}
+                  </span>
                 </div>
-
-                {/* Customer Details Card */}
-                <div className="bg-white/80 border border-slate-200/80 rounded-xl p-3.5 space-y-2">
-                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-1 mb-1">
-                    Customer
-                  </p>
-                  <div className="flex items-center gap-2 font-extrabold text-slate-800 text-sm">
-                    <User size={14} className="text-slate-400 shrink-0" />
-                    <span className="truncate">{b.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2 font-bold text-slate-700 text-sm">
-                    <Phone size={14} className="text-slate-400 shrink-0" />
-                    <span className="truncate">{b.phone}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-500 font-medium text-xs">
-                    <Mail size={14} className="text-slate-400 shrink-0" />
-                    <span className="truncate">{b.email}</span>
-                  </div>
-                </div>
-
-                {/* Reservation Slots Details */}
-                <div className="bg-white/80 border border-slate-200/80 rounded-xl p-3.5 space-y-2">
-                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest border-b-2 border-slate-200 pb-1 mb-1">
-                    Reservation Details
-                  </p>
-                  {Object.entries(slotsByCourt).map(([court, slots]: [string, any]) => (
-                    <div key={court} className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
-                        <Calendar size={13} className="text-slate-400 shrink-0" />
-                        <span>{formatDate(slots[0]?.date)}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-sm text-slate-800 font-extrabold">
-                        <MapPin size={13} className="text-slate-400 shrink-0" />
-                        <span>Court {court}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-900 font-black">
-                        <Clock size={13} className="text-slate-400 shrink-0" />
-                        <span>
-                          {slots.map((s: any) => s.timeSlot).join(', ')}
-                          <span className="text-slate-400 text-[10px] font-bold ml-1">({slots.length}h)</span>
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <span className="text-xs font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded uppercase tracking-wider">
+                  Conflict
+                </span>
               </div>
 
-              {/* Action for this booking */}
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  onClick={() => handleConfirm(b.id)}
-                  disabled={actionLoadingId !== null}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all duration-200 disabled:opacity-50 shadow-sm cursor-pointer whitespace-nowrap"
-                >
-                  {actionLoadingId === b.id ? (
-                    <RefreshCw size={14} className="animate-spin text-white" />
-                  ) : (
-                    <Check size={14} strokeWidth={2.5} />
-                  )}
-                  <span>Confirm & Decline Other</span>
-                </button>
-                <button
-                  onClick={() => handleReject(b.id)}
-                  disabled={actionLoadingId !== null}
-                  className="flex items-center justify-center gap-1 px-3 py-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-xl transition-all font-bold text-xs disabled:opacity-50 cursor-pointer whitespace-nowrap"
-                  title="Reject only this request"
-                >
-                  <X size={15} strokeWidth={2.5} />
-                  <span>Decline</span>
-                </button>
+              {/* Side-by-side bookings requesting this slot */}
+              <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+                {slotBookings.map((b: any) => {
+                  const shortId = b.id.substring(0, 3).toUpperCase();
+                  const isLoading = actionLoadingId === `${b.id}-${court}-${date}-${timeSlot}`;
+
+                  return (
+                    <div key={b.id} className="p-4 flex flex-col justify-between gap-4">
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                            Request #{shortId}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-semibold">
+                            Submitted: {b.createdAt ? format(new Date(b.createdAt), "MMM d, h:mm a") : 'N/A'}
+                          </span>
+                        </div>
+
+                        {/* Customer details mini card */}
+                        <div className="bg-slate-50 rounded-lg p-2.5 space-y-1 text-xs">
+                          <div className="font-bold text-slate-800 truncate">{b.name}</div>
+                          <div className="text-slate-600 font-semibold">{b.phone}</div>
+                          {b.email && <div className="text-slate-500 truncate">{b.email}</div>}
+                        </div>
+
+                      </div>
+
+                      {/* Action Button for this slot */}
+                      <button
+                        onClick={() => handleResolveSlotConflict(b.id, court, date, timeSlot)}
+                        disabled={actionLoadingId !== null}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        {isLoading ? (
+                          <RefreshCw size={12} className="animate-spin text-white" />
+                        ) : (
+                          <Check size={12} strokeWidth={3} />
+                        )}
+                        <span>Confirm slot for {b.name.split(' ')[0]}</span>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* Footer / Whole Booking Actions */}
+      <div className="bg-slate-50 border-t border-amber-200/50 p-4 flex flex-col gap-3">
+        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          Manage Whole Booking Requests
+        </h4>
+        <div className="flex flex-wrap gap-3">
+          {bookings.map((b: any) => {
+            const shortId = b.id.substring(0, 3).toUpperCase();
+            return (
+              <div key={b.id} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs">
+                <span className="font-bold text-slate-700">#{shortId} ({b.name})</span>
+                <button
+                  onClick={() => handleReject(b.id)}
+                  disabled={actionLoadingId !== null}
+                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded font-bold cursor-pointer transition-colors"
+                >
+                  Decline Request
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

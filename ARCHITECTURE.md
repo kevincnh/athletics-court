@@ -27,7 +27,7 @@ Rather than booking directly into Google Calendar, reservations are first persis
 
 ### `bookings` Table
 Stores main reservation headers and customer details.
-* `id` (TEXT, PK): Unique booking UUID
+* `id` (TEXT, PK): Unique short booking ID formatted as `YYMMDD-XXXX` (previously UUID).
 * `name` (TEXT): Customer's name
 * `email` (TEXT): Customer's email
 * `phone` (TEXT): Customer's contact number
@@ -36,13 +36,14 @@ Stores main reservation headers and customer details.
 * `created_at` (TEXT): ISO timestamp of submission
 
 ### `reserved_slots` Table
-Stores individual timeslots associated with a booking.
+Stores individual timeslots associated with a booking. Allows partial rejection within batch bookings.
 * `id` (INTEGER, PK AUTOINCREMENT)
 * `booking_id` (TEXT, FK references `bookings.id` ON DELETE CASCADE)
 * `court` (INTEGER): Court number (1-6)
 * `date` (TEXT): Booking date (`YYYY-MM-DD`)
 * `time_slot` (TEXT): Selected timeslot string (e.g. `'09:00 AM'`)
 * `calendar_event_id` (TEXT): Google Calendar event ID (populated after owner confirmation)
+* `status` (TEXT): `'pending'` | `'confirmed'` | `'rejected'` (Tracks granular slot status to support partial rejections)
 
 ---
 
@@ -76,8 +77,11 @@ sequenceDiagram
 1. **Dashboard Access**: The owner navigates to `/dashboard` and enters the security passcode (`admin123`).
 2. **Modular Dashboard Rendering**: The dashboard UI (`src/app/App.tsx`) is split into specialized sub-views (`DashboardView.tsx`, `BookingsView.tsx`, `CourtsView.tsx`) rendered conditionally based on navigation state to improve maintainability and rendering efficiency.
 3. **Double Booking Detection & Resolution UI**: The system cross-references pending booking slots against all active bookings. In both the `DashboardView` and `BookingsView`, conflicting pending requests are grouped into a single unified Conflict Card. The owner can inspect the details side-by-side and choose which request to confirm. Confirming one booking automatically triggers the rejection of all conflicting pending bookings, resolving the conflict database-wide and notifying clients.
-4. **Action (Confirm)**: Owner clicks "Confirm". The worker marks the booking status as `confirmed`, creates Google Calendar events, and emails the customer.
-5. **Action (Reject)**: Owner clicks "Reject". The worker marks the status as `rejected` and emails a decline notification to the customer.
+4. **Court Date Selection & Calendar Popover**: The date selection header in the Courts view uses a seamless navigation pill. It groups Chevron navigation arrows together and integrates a custom styled `Popover` and `Calendar` component. This custom date picker allows the user to browse dates with a calendar popup that matches the theme and visual aesthetics of the dashboard, replacing default browser/OS widgets.
+5. **Interactive Modals with Backdrop Dismissal**: Details and conflict modals are configured to support backdrop click dismissal. Clicking on the dark semi-transparent overlay backdrop closes the modal, whereas clicking inside the card content propagates no events and keeps the modal open.
+6. **Explicit Search Interface**: To prevent immediate keystroke filtering confusion, the Bookings view uses an explicit search control. It includes a text input, an inline clear (`X`) button to instantly reset queries, and a dedicated "Search" button (or `Enter` key trigger) to apply filters.
+7. **Action (Confirm)**: Owner clicks "Confirm". The worker marks the booking status as `confirmed`, creates Google Calendar events, and emails the customer.
+8. **Action (Reject)**: Owner clicks "Reject". The worker marks the status as `rejected` and emails a decline notification to the customer.
 
 ```mermaid
 sequenceDiagram

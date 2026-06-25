@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, Clock, CheckCircle2, Layers, TrendingUp, X, Check, RefreshCw, AlertTriangle, ChevronRight } from 'lucide-react';
 import { BookingCard } from './BookingCard';
 import { ConflictGroupCard } from './ConflictGroupCard';
@@ -9,19 +9,18 @@ export function DashboardView({
   confirmedCount,
   totalSlotsCount,
   totalRevenue,
-  filteredBookings,
   isLoading,
-  activeTab,
-  setActiveTab,
-  searchQuery,
-  setSearchQuery,
   handleConfirm,
   handleReject,
+  handleResolveSlotConflict,
   actionLoadingId,
   isDoubleBooked,
   setActiveNav,
   setSelectedAdminCourt
 }: any) {
+  const [localActiveTab, setLocalActiveTab] = useState<'pending' | 'confirmed'>('pending');
+  const localFilteredBookings = bookings.filter((b: any) => b.status === localActiveTab);
+
   return (
     <div className="space-y-6">
       {/* Stat cards */}
@@ -166,16 +165,24 @@ export function DashboardView({
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
         <div className="xl:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col min-h-[400px]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-            <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
-              Manage Bookings
-            </h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
+                Manage Bookings
+              </h2>
+              <button 
+                onClick={() => setActiveNav("Bookings")}
+                className="text-sm font-bold text-amber-600 hover:text-amber-700 underline underline-offset-2"
+              >
+                View All Bookings
+              </button>
+            </div>
             
             {/* Tabs */}
             <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 self-start sm:self-auto">
               <button
-                onClick={() => setActiveTab('pending')}
+                onClick={() => setLocalActiveTab('pending')}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer capitalize ${
-                  activeTab === 'pending'
+                  localActiveTab === 'pending'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -183,9 +190,9 @@ export function DashboardView({
                 <span>Pending</span>
               </button>
               <button
-                onClick={() => setActiveTab('confirmed')}
+                onClick={() => setLocalActiveTab('confirmed')}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer capitalize ${
-                  activeTab === 'confirmed'
+                  localActiveTab === 'confirmed'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -201,7 +208,7 @@ export function DashboardView({
                 <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3" />
                 <p className="font-bold text-sm">Loading...</p>
               </div>
-            ) : filteredBookings.length === 0 ? (
+            ) : localFilteredBookings.length === 0 ? (
               <div className="py-10 text-center border-2 border-dashed border-slate-200 rounded-xl">
                 <p className="text-slate-400 font-bold text-sm">No bookings found</p>
               </div>
@@ -210,7 +217,7 @@ export function DashboardView({
                 const renderedIds = new Set<string>();
                 const elements: React.ReactNode[] = [];
 
-                filteredBookings.forEach((b: any) => {
+                localFilteredBookings.forEach((b: any) => {
                   if (renderedIds.has(b.id)) return;
 
                   if (b.status === 'pending') {
@@ -234,6 +241,7 @@ export function DashboardView({
                           bookings={group}
                           handleConfirm={handleConfirm}
                           handleReject={handleReject}
+                          handleResolveSlotConflict={handleResolveSlotConflict}
                           actionLoadingId={actionLoadingId}
                         />
                       );
