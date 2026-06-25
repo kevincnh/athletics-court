@@ -21,6 +21,35 @@ export function DashboardView({
   const [localActiveTab, setLocalActiveTab] = useState<'pending' | 'confirmed'>('pending');
   const localFilteredBookings = bookings.filter((b: any) => b.status === localActiveTab);
 
+  // Compute "Activity by Day" across all bookings
+  const weekActivity = [0, 0, 0, 0, 0, 0, 0]; // Mon - Sun
+
+  bookings.forEach((b: any) => {
+    if (b.status === 'rejected') return;
+    b.slots?.forEach((s: any) => {
+      if (s.status === 'rejected') return;
+      if (!s.date) return;
+      try {
+        const [year, month, day] = s.date.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day);
+        const dayIdx = dateObj.getDay(); 
+        const mappedIdx = dayIdx === 0 ? 6 : dayIdx - 1;
+        weekActivity[mappedIdx] += 1;
+      } catch (e) {}
+    });
+  });
+
+  const maxActivity = Math.max(...weekActivity, 1);
+  const activityData = [
+    { day: 'Mon', h: `${(weekActivity[0] / maxActivity) * 100}%`, count: weekActivity[0] },
+    { day: 'Tue', h: `${(weekActivity[1] / maxActivity) * 100}%`, count: weekActivity[1] },
+    { day: 'Wed', h: `${(weekActivity[2] / maxActivity) * 100}%`, count: weekActivity[2] },
+    { day: 'Thu', h: `${(weekActivity[3] / maxActivity) * 100}%`, count: weekActivity[3] },
+    { day: 'Fri', h: `${(weekActivity[4] / maxActivity) * 100}%`, count: weekActivity[4] },
+    { day: 'Sat', h: `${(weekActivity[5] / maxActivity) * 100}%`, count: weekActivity[5] },
+    { day: 'Sun', h: `${(weekActivity[6] / maxActivity) * 100}%`, count: weekActivity[6] },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Stat cards */}
@@ -58,19 +87,15 @@ export function DashboardView({
               </div>
               <div className={`p-3 rounded-xl ${
                 highlight && label === "Estimated Revenue" ? "bg-amber-300/50" 
-                : highlight && label === "Pending Action" ? "bg-amber-50 text-amber-600"
-                : "bg-slate-50 text-slate-500"
+                : highlight && label === "Pending Action" ? "bg-amber-100/50 text-amber-600"
+                : "bg-slate-100 text-slate-500"
               }`}>
-                <Icon size={20} className={
-                  highlight && label === "Estimated Revenue" ? "text-amber-950" 
-                  : highlight && label === "Pending Action" ? "text-amber-600"
-                  : "text-slate-500"
-                } />
+                <Icon size={24} />
               </div>
             </div>
-            <p className={`text-sm font-semibold mt-4 ${
+            <p className={`text-xs mt-4 font-semibold ${
               highlight && label === "Estimated Revenue" ? "text-amber-900/80" 
-              : highlight && label === "Pending Action" ? "text-amber-600"
+              : highlight && label === "Pending Action" ? "text-amber-700/80" 
               : "text-slate-400"
             }`}>
               {delta}
@@ -79,27 +104,32 @@ export function DashboardView({
         ))}
       </div>
 
-      {/* Court availability + chart row */}
+      {/* Charts & Facilities */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
-        {/* Court grid */}
+        {/* Facilities Status */}
         <div className="xl:col-span-3 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-sm font-black uppercase tracking-widest text-slate-900">
               Facilities Status
             </h2>
-            <div className="flex items-center gap-4 text-xs font-bold text-slate-500">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />Available</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-900 inline-block" />Occupied</span>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                <span className="w-2 h-2 rounded-full bg-slate-900"></span>
+                Occupied
+              </span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 ml-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Available
+              </span>
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 flex-1">
-            {[1, 2, 3, 4, 5, 6].map((courtId) => {
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-1">
+            {[1, 2, 3, 4, 5, 6].map(courtId => {
               const isOccupied = false; 
               return (
-                <div
+                <div 
                   key={courtId}
                   onClick={() => {
-                    // Navigate to Courts tab
                     setSelectedAdminCourt(courtId);
                     setActiveNav("Courts");
                   }}
@@ -132,23 +162,20 @@ export function DashboardView({
           </div>
         </div>
 
-        {/* Weekly bookings chart (Tailwind CSS based) */}
+        {/* Weekly bookings chart */}
         <div className="xl:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
           <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 mb-6">
-            This Week Activity
+            Activity by Day
           </h2>
-          <div className="flex-1 flex items-end gap-3 justify-between pb-2 h-48">
-            {[
-              { day: 'Mon', h: '0%' },
-              { day: 'Tue', h: '0%' },
-              { day: 'Wed', h: '0%' },
-              { day: 'Thu', h: '0%' },
-              { day: 'Fri', h: '0%' },
-              { day: 'Sat', h: '0%' },
-              { day: 'Sun', h: '0%' },
-            ].map((stat, i) => (
-              <div key={i} className="flex flex-col items-center gap-3 w-full group cursor-pointer">
-                <div className="w-full bg-slate-100 rounded-t-lg relative flex items-end h-full">
+          <div className="flex-1 flex items-end gap-3 justify-between pb-2 h-48 mt-4">
+            {activityData.map((stat, i) => (
+              <div key={i} className="flex flex-col items-center gap-3 w-full h-full group cursor-pointer relative">
+                {stat.count > 0 && (
+                  <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded">
+                    {stat.count}
+                  </div>
+                )}
+                <div className="w-full bg-slate-100 rounded-t-lg relative flex items-end flex-1">
                   <div 
                     className="w-full bg-amber-400 rounded-t-md group-hover:bg-amber-300 transition-colors" 
                     style={{ height: stat.h }}

@@ -108,6 +108,33 @@ export function ConflictGroupCard({
                           {b.email && <div className="text-slate-500 truncate">{b.email}</div>}
                         </div>
 
+                        {/* Display other slots in the batch request if any */}
+                        {(() => {
+                          const otherSlots = b.slots?.filter((s: any) => !(String(s.court) === String(court) && s.date === date && s.timeSlot === timeSlot && s.status !== 'rejected')) || [];
+                          // also exclude rejected slots in the other list to avoid confusion
+                          const activeOtherSlots = otherSlots.filter((s: any) => s.status !== 'rejected');
+                          
+                          if (activeOtherSlots.length > 0) {
+                            return (
+                              <div className="mt-4 text-xs border border-slate-200 bg-slate-50/50 rounded-lg p-3">
+                                <div className="font-extrabold text-slate-700 uppercase tracking-wide mb-0.5 text-sm">Also requested in this batch:</div>
+                                <div className="text-xs text-amber-600 mb-3 font-semibold leading-relaxed">
+                                  * Waiting for conflicts to be resolved before the full batch request can be confirmed.
+                                </div>
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5 text-slate-600 font-medium">
+                                  {activeOtherSlots.map((s: any, idx: number) => (
+                                    <div key={idx} className="flex items-center gap-1.5 bg-white border border-slate-100 rounded px-2 py-1">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0"></div>
+                                      <span className="truncate">Court {s.court} &bull; {formatDate(s.date)} &bull; {s.timeSlot}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+
                       </div>
 
                       {/* Action Button for this slot */}
@@ -130,30 +157,6 @@ export function ConflictGroupCard({
             </div>
           );
         })}
-      </div>
-
-      {/* Footer / Whole Booking Actions */}
-      <div className="bg-slate-50 border-t border-amber-200/50 p-4 flex flex-col gap-3">
-        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-          Manage Whole Booking Requests
-        </h4>
-        <div className="flex flex-wrap gap-3">
-          {bookings.map((b: any) => {
-            const shortId = b.id.substring(0, 3).toUpperCase();
-            return (
-              <div key={b.id} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs">
-                <span className="font-bold text-slate-700">#{shortId} ({b.name})</span>
-                <button
-                  onClick={() => handleReject(b.id)}
-                  disabled={actionLoadingId !== null}
-                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded font-bold cursor-pointer transition-colors"
-                >
-                  Decline Request
-                </button>
-              </div>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
