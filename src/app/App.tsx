@@ -23,6 +23,7 @@ import {
   LogOut,
   RefreshCw,
   Search,
+  Database,
   AlertCircle,
   X,
   Calendar,
@@ -33,7 +34,8 @@ import {
   BookOpen,
   Plus,
   CheckCircle,
-  Activity
+  Activity,
+  Menu
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay } from 'date-fns';
 
@@ -55,6 +57,7 @@ function Dashboard({ goBack }: { goBack: () => void }) {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [activeNav, setActiveNav] = useState("Dashboard");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedAdminCourt, setSelectedAdminCourt] = useState<number | null>(null);
   const [sendOwnerNotifications, setSendOwnerNotifications] = useState(true);
   const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(true);
@@ -157,6 +160,38 @@ function Dashboard({ goBack }: { goBack: () => void }) {
     localStorage.removeItem('paddle_dashboard_passcode');
     setIsAuthenticated(false);
     setPasscode('');
+  };
+
+  const handleSeedDatabase = async () => {
+    if (!window.confirm("Are you sure you want to seed the database? This will clear all existing data.")) return;
+    setIsLoading(true);
+    try {
+      const localDate = new Date();
+      const yyyy = localDate.getFullYear();
+      const mm = String(localDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(localDate.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const res = await fetch(`/api/dev/seed?date=${dateStr}`);
+      
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Received HTML or invalid response. Please make sure you have deployed the latest Cloudflare Worker code (e.g. `npm run deploy` or `wrangler deploy`) so the new /api/dev/seed endpoint is available on the backend.");
+      }
+      
+      if (data.success) {
+        await fetchBookings();
+        alert('Database seeded successfully! UI has been refreshed.');
+      } else {
+        alert(data.error || 'Failed to seed database');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error seeding database');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const fetchBookings = async () => {
@@ -389,11 +424,20 @@ function Dashboard({ goBack }: { goBack: () => void }) {
   }
 
   return (
-    <div className="flex w-full min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-amber-200 selection:text-slate-900">
+    <div className="flex w-full h-screen bg-slate-50 font-sans text-slate-900 selection:bg-amber-200 selection:text-slate-900 overflow-hidden">
+      
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 flex flex-col bg-slate-950 text-white shrink-0 min-h-screen sticky top-0 self-start">
-        {/* Logo */}
-        <div className="px-6 pt-8 pb-6 border-b border-white/10">
+      <aside className={`fixed inset-y-0 left-0 z-[110] w-64 flex flex-col bg-slate-950 text-white shrink-0 min-h-screen transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {/* Logo & Mobile Close */}
+        <div className="px-6 pt-8 pb-6 border-b border-white/10 flex items-start justify-between">
           <div className="flex flex-col">
             <span className="text-xl font-black tracking-widest text-white">
               <span className="text-amber-400">THE</span> PADDLE CLUB
@@ -402,10 +446,16 @@ function Dashboard({ goBack }: { goBack: () => void }) {
               {format(new Date(), 'EEEE, d MMMM yyyy')}
             </span>
           </div>
+          <button 
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="lg:hidden text-white/50 hover:text-white p-1"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-4 py-6 flex flex-col justify-between">
+        <nav className="flex-1 px-4 py-6 flex flex-col justify-between overflow-y-auto">
           <div className="space-y-1">
             {navItems.map(({ icon: Icon, label }) => {
               const isActive = activeNav === label;
@@ -415,6 +465,7 @@ function Dashboard({ goBack }: { goBack: () => void }) {
                   onClick={() => {
                     if (label === 'Courts') setSelectedAdminCourt(null);
                     setActiveNav(label);
+                    setIsMobileMenuOpen(false); // Close on selection
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all font-semibold cursor-pointer ${
                     isActive
@@ -479,6 +530,15 @@ function Dashboard({ goBack }: { goBack: () => void }) {
             </button>
           </div>
 
+          {/* Developer: Seed DB */}
+          <button 
+            onClick={handleSeedDatabase}
+            className="w-full mb-2 flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-indigo-400 hover:text-indigo-300 hover:bg-white/5 transition-colors font-semibold cursor-pointer border border-indigo-500/30"
+          >
+            <Database size={18} strokeWidth={2} />
+            Seed Database (Dev)
+          </button>
+
           <button 
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-white/50 hover:text-red-400 hover:bg-white/5 transition-colors font-semibold cursor-pointer"
@@ -500,9 +560,28 @@ function Dashboard({ goBack }: { goBack: () => void }) {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden">
+        
+        {/* Mobile Top Navigation Bar */}
+        <div className="lg:hidden flex items-center justify-between p-4 bg-slate-950 text-white sticky top-0 z-50">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-1 text-white/70 hover:text-white"
+            >
+              <Menu size={24} />
+            </button>
+            <span className="text-lg font-black tracking-widest text-white">
+              <span className="text-amber-400">THE</span> PADDLE CLUB
+            </span>
+          </div>
+          <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-white shadow-inner">
+            AD
+          </div>
+        </div>
+
         {/* Body */}
-        <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
+        <div className="flex-1 p-4 lg:p-8 overflow-y-auto bg-slate-50">
           {activeNav === 'Dashboard' && (
             <DashboardView
               bookings={bookings}
@@ -880,7 +959,7 @@ export default function App() {
         {/* Left Side: Layout Map */}
         <div className="flex-1 bg-[#d8dde3] p-4 sm:p-6 md:p-8 rounded-[2rem] shadow-2xl border-8 border-slate-300 relative overflow-hidden flex flex-col">
           {/* Header */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-8 md:px-12 py-3 rounded-b-2xl font-black tracking-widest text-xl md:text-2xl shadow-xl z-20 flex items-center gap-3">
+          <div className="absolute top-0 inset-x-0 bg-slate-800 text-white py-2 md:py-3 font-black tracking-widest text-lg md:text-2xl shadow-xl z-20 flex items-center justify-center gap-2 whitespace-nowrap">
             <span className="text-amber-400">THE</span> PADDLE CLUB
           </div>
 

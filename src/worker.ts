@@ -65,6 +65,56 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/dev/seed") {
+      try {
+        const accessToken = await getAccessToken(env);
+        const { results: slots } = await env.DB.prepare("SELECT calendar_event_id FROM reserved_slots WHERE calendar_event_id IS NOT NULL").all();
+        await env.DB.prepare("DELETE FROM reserved_slots").run();
+        await env.DB.prepare("DELETE FROM bookings").run();
+        
+        const promises = slots.map(async (slot: any) => {
+          if (slot.calendar_event_id) {
+            try { await deleteCalendarEvent(accessToken, env.GOOGLE_CALENDAR_ID, slot.calendar_event_id); } catch (e) {}
+          }
+        });
+        await Promise.all(promises);
+
+        const clientDate = url.searchParams.get("date");
+        const today = new Date();
+        const dateStr = clientDate || today.toISOString().slice(0, 10);
+        
+        // Seed Confirmed Booking
+        const b1Id = "241215-SEED1";
+        await env.DB.prepare("INSERT INTO bookings (id, name, email, phone, message, status, created_at) VALUES (?1, 'John Doe', 'john@example.com', '555-0101', 'Regular game', 'confirmed', ?2)").bind(b1Id, today.toISOString()).run();
+        await env.DB.prepare("INSERT INTO reserved_slots (booking_id, court, date, time_slot, status) VALUES (?1, 1, ?2, '09:00 AM', 'confirmed')").bind(b1Id, dateStr).run();
+
+        // Seed Pending Booking (No conflict)
+        const b2Id = "241215-SEED2";
+        await env.DB.prepare("INSERT INTO bookings (id, name, email, phone, message, status, created_at) VALUES (?1, 'Jane Smith', 'jane@example.com', '555-0102', 'First time', 'pending', ?2)").bind(b2Id, today.toISOString()).run();
+        await env.DB.prepare("INSERT INTO reserved_slots (booking_id, court, date, time_slot, status) VALUES (?1, 2, ?2, '10:00 AM', 'pending')").bind(b2Id, dateStr).run();
+        await env.DB.prepare("INSERT INTO reserved_slots (booking_id, court, date, time_slot, status) VALUES (?1, 2, ?2, '11:00 AM', 'pending')").bind(b2Id, dateStr).run();
+
+        // Seed Double Booking Conflict
+        const b3Id = "241215-SEED3";
+        await env.DB.prepare("INSERT INTO bookings (id, name, email, phone, message, status, created_at) VALUES (?1, 'Alice Jones', 'alice@example.com', '555-0103', 'Tournament practice', 'pending', ?2)").bind(b3Id, today.toISOString()).run();
+        await env.DB.prepare("INSERT INTO reserved_slots (booking_id, court, date, time_slot, status) VALUES (?1, 3, ?2, '02:00 PM', 'pending')").bind(b3Id, dateStr).run();
+        
+        const b4Id = "241215-SEED4";
+        await env.DB.prepare("INSERT INTO bookings (id, name, email, phone, message, status, created_at) VALUES (?1, 'Bob Brown', 'bob@example.com', '555-0104', 'Corporate event', 'pending', ?2)").bind(b4Id, today.toISOString()).run();
+        await env.DB.prepare("INSERT INTO reserved_slots (booking_id, court, date, time_slot, status) VALUES (?1, 3, ?2, '02:00 PM', 'pending')").bind(b4Id, dateStr).run();
+        await env.DB.prepare("INSERT INTO reserved_slots (booking_id, court, date, time_slot, status) VALUES (?1, 3, ?2, '03:00 PM', 'pending')").bind(b4Id, dateStr).run();
+
+        // Seed Rejected Booking
+        const b5Id = "241215-SEED5";
+        await env.DB.prepare("INSERT INTO bookings (id, name, email, phone, message, status, created_at) VALUES (?1, 'Charlie Davis', 'charlie@example.com', '555-0105', 'Changed mind', 'rejected', ?2)").bind(b5Id, today.toISOString()).run();
+        await env.DB.prepare("INSERT INTO reserved_slots (booking_id, court, date, time_slot, status) VALUES (?1, 4, ?2, '04:00 PM', 'rejected')").bind(b5Id, dateStr).run();
+
+        return jsonResponse({ success: true, message: "Database seeded successfully" });
+      } catch (err: any) {
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
     // 2. GET /api/bookings
     if (url.pathname === "/api/bookings" && request.method === "GET") {
       try {

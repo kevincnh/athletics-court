@@ -26,6 +26,7 @@ This document details the functional specifications for introducing a booking co
   - **Cohesive Date Picker**: The Courts view date selection operates via a custom Popover Calendar widget. The navigation is housed in a single seamless pill where the Left/Right chevrons are grouped together and the date text serves as a button that triggers a custom calendar card.
   - **Click-Outside Modal Dismissal**: Custom overlay modals (Booking Details and Conflict Details) close instantly when the user clicks anywhere on the dark backdrop overlay outside of the modal card. Clicks inside the card do not close the modal.
   - **Global Settings Management**: The dashboard sidebar includes an "Email Alerts" toggle to quickly turn on/off the "Action Required" emails sent to the owner, providing a more configurable alert system.
+  - **Database Seeding (Dev Tool)**: The dashboard includes a "Seed Database" button for development. When clicked, it accurately detects the user's local timezone date, completely clears all existing booking and slot data, and instantly regenerates a fresh set of mock data strictly for the current local day.
 
 ### 3. Notification Flows
 * **Awaiting Confirmation**:
@@ -35,3 +36,4 @@ This document details the functional specifications for introducing a booking co
 * **Status Updates**:
   - **Confirmed**: When the owner clicks "Confirm", the customer receives a "Booking Confirmed" email, and the status changes.
   - **Rejected**: When the owner clicks "Reject", the customer receives a "Booking Rejected" email.
+

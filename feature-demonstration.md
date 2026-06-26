@@ -74,3 +74,15 @@ The system keeps all parties informed automatically via the Gmail and Google Cal
 ---
 
 *This system ensures maximum booking yield for the business owner while providing a transparent, fair experience for customers.*
+
+---
+
+## 5. Developer Tools
+
+### Seed Database
+For demonstration and testing purposes, there is a dedicated **Seed Database (Dev)** toggle button located at the bottom of the owner dashboard sidebar. When activated:
+- The system captures the user's exact local timezone date to ensure accuracy.
+- The database is completely wiped (clearing the current seed and any other data) to ensure a clean slate.
+- It immediately regenerates and inserts a predefined set of bookings representing different scenarios (a confirmed booking, pending single slots, a complex double-booking conflict, and a rejected booking) exactly on the current local day.
+- This allows developers or sales representatives to instantly demonstrate the system's conflict resolution UI without manually creating bookings.
+- **Note:** This feature must be removed before selling or deploying to actual customers.

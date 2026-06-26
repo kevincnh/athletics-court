@@ -17,6 +17,7 @@ export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt
   const courts = [1, 2, 3, 4, 5, 6];
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
+  const isToday = dateStr === format(new Date(), 'yyyy-MM-dd');
 
   // Compute status and booking for a specific court and slot on selectedDate
   const getSlotData = (court: number, time: string) => {
@@ -46,8 +47,8 @@ export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col h-[calc(100vh-4rem)]">
       {/* Header - Persistent */}
-      <div className="shrink-0 p-6 pb-4 border-b border-slate-200 shadow-sm z-20 bg-white rounded-t-2xl">
-        <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
+      <div className="shrink-0 p-4 sm:p-6 pb-4 border-b border-slate-200 shadow-sm z-20 bg-white rounded-t-2xl">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">
               {selectedAdminCourt ? `Court ${selectedAdminCourt} Schedule` : 'All Courts Schedule'}
@@ -57,17 +58,17 @@ export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt
             </p>
           </div>
           
-          <div className="flex flex-wrap items-center gap-6">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             {/* Legend beside the date picker */}
             <div className="hidden lg:flex items-center gap-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-emerald-50 border border-emerald-200"></span>Avail
+                <span className="w-2.5 h-2.5 rounded-sm bg-emerald-50 border border-emerald-200"></span>Available
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-amber-100 border border-amber-300"></span>Pend
+                <span className="w-2.5 h-2.5 rounded-sm bg-amber-100 border border-amber-300"></span>Pending
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-slate-900 border border-slate-900"></span>Conf
+                <span className="w-2.5 h-2.5 rounded-sm bg-slate-900 border border-slate-900"></span>Confirmed
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm bg-rose-100 border border-rose-300"></span>Conflict
@@ -96,9 +97,11 @@ export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt
               <Popover>
                 <PopoverTrigger asChild>
                   <button
-                    className="relative px-6 py-2 flex items-center gap-2 font-bold text-sm text-slate-800 min-w-[160px] justify-center hover:bg-white rounded-lg transition-colors cursor-pointer shadow-sm border border-transparent"
+                    className={`relative px-6 py-2 flex items-center gap-2 font-bold text-sm min-w-[160px] justify-center hover:bg-white rounded-lg transition-colors cursor-pointer shadow-sm border border-transparent ${
+                      isToday ? 'text-amber-600 bg-amber-50 hover:bg-amber-100' : 'text-slate-800'
+                    }`}
                   >
-                    <CalendarIcon size={15} className="text-slate-500" />
+                    <CalendarIcon size={15} className={isToday ? 'text-amber-500' : 'text-slate-500'} />
                     <span>{format(selectedDate, 'MMM d, yyyy')}</span>
                   </button>
                 </PopoverTrigger>
@@ -113,6 +116,16 @@ export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt
                     }}
                     initialFocus
                   />
+                  {!isToday && (
+                    <div className="p-2 border-t border-slate-100">
+                      <button
+                        onClick={() => setSelectedDate(new Date())}
+                        className="w-full text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 py-2 rounded-lg transition-colors border border-amber-200 hover:border-amber-300"
+                      >
+                        Go to Today
+                      </button>
+                    </div>
+                  )}
                 </PopoverContent>
               </Popover>
 
@@ -131,7 +144,7 @@ export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt
       </div>
 
       {/* Scrollable Body */}
-      <div className="flex-1 overflow-auto p-6 pt-0 relative">
+      <div className="flex-1 overflow-auto p-4 sm:p-6 pt-0 relative">
         <div className="min-w-[800px] pb-4">
           <div className="grid" style={{ gridTemplateColumns: `80px repeat(${visibleCourts.length}, minmax(0, 1fr))` }}>
             {/* Header (Sticky inside scrollable area) */}
