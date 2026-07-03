@@ -105,9 +105,9 @@ export function DashboardView({
       
       const idx = weekDateStrings.indexOf(s.date);
       if (idx !== -1) {
-        if (s.status === 'confirmed') {
+        if (b.status === 'confirmed') {
           weekActivity[idx].confirmed += 1;
-        } else if (s.status === 'pending') {
+        } else if (b.status === 'pending') {
           weekActivity[idx].pending += 1;
         }
       }
@@ -339,7 +339,7 @@ export function DashboardView({
                         className="w-full bg-slate-300 flex items-center justify-center transition-all overflow-hidden"
                         style={{ height: stat.pendingH }}
                       >
-                        {stat.pending > 0 && (stat.pending / maxActivity) * 100 > 8 && (
+                        {stat.pending > 0 && stat.confirmed > 0 && (stat.pending / maxActivity) * 100 > 8 && (
                           <span className="text-[10px] font-black text-slate-600 mix-blend-color-burn">{stat.pending}</span>
                         )}
                       </div>
@@ -347,7 +347,7 @@ export function DashboardView({
                         className="w-full bg-amber-400 flex items-center justify-center transition-all overflow-hidden"
                         style={{ height: stat.confirmedH }}
                       >
-                        {stat.confirmed > 0 && (stat.confirmed / maxActivity) * 100 > 8 && (
+                        {stat.confirmed > 0 && stat.pending > 0 && (stat.confirmed / maxActivity) * 100 > 8 && (
                           <span className="text-[10px] font-black text-amber-900 mix-blend-color-burn">{stat.confirmed}</span>
                         )}
                       </div>
