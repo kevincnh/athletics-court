@@ -3,6 +3,7 @@ import { format, addDays, subDays } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, AlertTriangle, Check, RefreshCw } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover';
 import { Calendar } from '../ui/calendar';
+import { formatTimeSlot } from '../ui/utils';
 
 export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt, setActiveNav, setSearchQuery, setActiveTab, setFocusedBookingId, handleConfirm, handleReject, actionLoadingId }: any) {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -161,7 +162,7 @@ export function CourtsView({ bookings, selectedAdminCourt, setSelectedAdminCourt
             {timeSlots.map(time => (
               <React.Fragment key={time}>
                 <div className="p-3 text-xs font-bold text-slate-400 text-right border-b border-slate-50 flex items-center justify-end">
-                  {time}
+                  {formatTimeSlot(time)}
                 </div>
                 {visibleCourts.map(c => {
                   const { status, booking, conflicts } = getSlotData(c, time);

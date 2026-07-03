@@ -35,9 +35,12 @@ import {
   Plus,
   CheckCircle,
   Activity,
-  Menu
+  Menu,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay } from 'date-fns';
+import { formatTimeSlot } from './components/ui/utils';
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", active: true },
@@ -766,6 +769,8 @@ export default function App() {
     '05:00 PM', '06:00 PM', '07:00 PM', '08:00 PM', 
     '09:00 PM', '10:00 PM'
   ];
+  const morningTimes = times.filter(t => t.endsWith('AM'));
+  const afternoonTimes = times.filter(t => t.endsWith('PM'));
 
   const handleCourtSelect = (num: number) => {
     setSelectedCourts(prev => {
@@ -1166,6 +1171,46 @@ export default function App() {
                       const config = courtConfigs[refCourt] || { date: null, times: [], currentMonth: new Date() };
                       const calendarDays = getCalendarDays(config.currentMonth);
 
+                      const renderTimeButtons = (timesList: string[]) => {
+                        return timesList.map((time, i) => {
+                          const isSelected = config.times.includes(time);
+                          const dateStr = format(config.date!, 'yyyy-MM-dd');
+                          const isBlocked = selectedCourts.some(c => 
+                            blockedSlots.some(s => s.court === c && s.date === dateStr && s.time_slot === time)
+                          );
+                          return (
+                            <button 
+                              key={i}
+                              disabled={isBlocked}
+                              onClick={() => {
+                                setCourtConfigs(prev => {
+                                  const next = { ...prev };
+                                  selectedCourts.forEach(c => {
+                                    const current = next[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                                    const currentTimes = current.times || [];
+                                    const newTimes = currentTimes.includes(time)
+                                      ? currentTimes.filter(t => t !== time)
+                                      : [...currentTimes, time];
+                                    next[c] = { ...current, times: newTimes };
+                                  });
+                                  return next;
+                                });
+                              }}
+                              className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
+                                isBlocked
+                                  ? 'border-transparent bg-slate-100 text-slate-300 line-through cursor-not-allowed'
+                                  : isSelected
+                                    ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm cursor-pointer'
+                                    : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-50 cursor-pointer'
+                              }`}
+                            >
+                              {formatTimeSlot(time)}
+                              {isSelected && <Check className="w-4 h-4" />}
+                            </button>
+                          );
+                        });
+                      };
+
                       return (
                         <div className="flex-1 flex flex-col justify-between">
                           <div>
@@ -1268,44 +1313,27 @@ export default function App() {
                                     {format(config.date, 'MMM d, yyyy')} • Change
                                   </button>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                  {times.map((time, i) => {
-                                    const isSelected = config.times.includes(time);
-                                    const dateStr = format(config.date!, 'yyyy-MM-dd');
-                                    const isBlocked = selectedCourts.some(c => 
-                                      blockedSlots.some(s => s.court === c && s.date === dateStr && s.time_slot === time)
-                                    );
-                                    return (
-                                      <button 
-                                        key={i}
-                                        disabled={isBlocked}
-                                        onClick={() => {
-                                          setCourtConfigs(prev => {
-                                            const next = { ...prev };
-                                            selectedCourts.forEach(c => {
-                                              const current = next[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
-                                              const currentTimes = current.times || [];
-                                              const newTimes = currentTimes.includes(time)
-                                                ? currentTimes.filter(t => t !== time)
-                                                : [...currentTimes, time];
-                                              next[c] = { ...current, times: newTimes };
-                                            });
-                                            return next;
-                                          });
-                                        }}
-                                        className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
-                                          isBlocked
-                                            ? 'border-transparent bg-slate-100 text-slate-300 line-through cursor-not-allowed'
-                                            : isSelected
-                                              ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm cursor-pointer'
-                                              : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-50 cursor-pointer'
-                                        }`}
-                                      >
-                                        {time}
-                                        {isSelected && <Check className="w-4 h-4" />}
-                                      </button>
-                                    );
-                                  })}
+                                <div className="space-y-6">
+                                  {morningTimes.length > 0 && (
+                                    <div className="space-y-2">
+                                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Sun className="w-3.5 h-3.5 text-amber-500" /> Morning Sessions
+                                      </h4>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        {renderTimeButtons(morningTimes)}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {afternoonTimes.length > 0 && (
+                                    <div className="space-y-2">
+                                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Moon className="w-3.5 h-3.5 text-indigo-500" /> Afternoon & Evening
+                                      </h4>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        {renderTimeButtons(afternoonTimes)}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -1407,6 +1435,43 @@ export default function App() {
                           const config = courtConfigs[c];
                           const calendarDays = getCalendarDays(config.currentMonth);
 
+                          const renderTimeButtons = (timesList: string[]) => {
+                            return timesList.map((time, i) => {
+                              const isSelected = config.times.includes(time);
+                              const dateStr = format(config.date!, 'yyyy-MM-dd');
+                              const isBlocked = blockedSlots.some(s => s.court === c && s.date === dateStr && s.time_slot === time);
+                              return (
+                                <button 
+                                  key={i}
+                                  disabled={isBlocked}
+                                  onClick={() => {
+                                    setCourtConfigs(prev => {
+                                      const current = prev[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
+                                      const currentTimes = current.times || [];
+                                      const newTimes = currentTimes.includes(time)
+                                        ? currentTimes.filter(t => t !== time)
+                                        : [...currentTimes, time];
+                                      return {
+                                        ...prev,
+                                        [c]: { ...current, times: newTimes }
+                                      };
+                                    });
+                                  }}
+                                  className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
+                                    isBlocked
+                                      ? 'border-transparent bg-slate-100 text-slate-300 line-through cursor-not-allowed'
+                                      : isSelected
+                                        ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm cursor-pointer'
+                                        : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-50 cursor-pointer'
+                                  }`}
+                                >
+                                  {formatTimeSlot(time)}
+                                  {isSelected && <Check className="w-4 h-4" />}
+                                </button>
+                              );
+                            });
+                          };
+
                           return (
                             <div className="flex-1 flex flex-col justify-between">
                               <div>
@@ -1482,8 +1547,8 @@ export default function App() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="space-y-4 animate-in fade-in">
-                                    <div className="flex items-center justify-between mb-4">
+                                  <div className="space-y-6 animate-in fade-in">
+                                    <div className="flex items-center justify-between mb-2">
                                       <h3 className="font-bold text-slate-800 flex items-center gap-2">
                                         <Clock className="w-5 h-5 text-slate-400" /> Available Times
                                       </h3>
@@ -1502,42 +1567,27 @@ export default function App() {
                                         {format(config.date, 'MMM d, yyyy')} • Change
                                       </button>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                      {times.map((time, i) => {
-                                        const isSelected = config.times.includes(time);
-                                        const dateStr = format(config.date!, 'yyyy-MM-dd');
-                                        const isBlocked = blockedSlots.some(s => s.court === c && s.date === dateStr && s.time_slot === time);
-                                        return (
-                                          <button 
-                                            key={i}
-                                            disabled={isBlocked}
-                                            onClick={() => {
-                                              setCourtConfigs(prev => {
-                                                const current = prev[c] || { date: null, times: [], currentMonth: startOfMonth(new Date()) };
-                                                const currentTimes = current.times || [];
-                                                const newTimes = currentTimes.includes(time)
-                                                  ? currentTimes.filter(t => t !== time)
-                                                  : [...currentTimes, time];
-                                                return {
-                                                  ...prev,
-                                                  [c]: { ...current, times: newTimes }
-                                                };
-                                              });
-                                            }}
-                                            className={`py-3 px-4 rounded-xl border-2 font-bold transition-all flex items-center justify-center gap-2 ${
-                                              isBlocked
-                                                ? 'border-transparent bg-slate-100 text-slate-300 line-through cursor-not-allowed'
-                                                : isSelected
-                                                  ? 'border-amber-400 bg-amber-50 text-amber-700 shadow-sm cursor-pointer'
-                                                  : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-50 cursor-pointer'
-                                            }`}
-                                          >
-                                            {time}
-                                            {isSelected && <Check className="w-4 h-4" />}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
+                                    
+                                    {morningTimes.length > 0 && (
+                                      <div className="space-y-2">
+                                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                          <Sun className="w-3.5 h-3.5 text-amber-500" /> Morning Sessions
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-3">
+                                          {renderTimeButtons(morningTimes)}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {afternoonTimes.length > 0 && (
+                                      <div className="space-y-2">
+                                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                          <Moon className="w-3.5 h-3.5 text-indigo-500" /> Afternoon & Evening
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-3">
+                                          {renderTimeButtons(afternoonTimes)}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -1582,7 +1632,7 @@ export default function App() {
                         <div key={c} className="text-xs leading-snug border-b border-amber-100/50 pb-1.5 last:border-0 last:pb-0">
                           <span className="font-bold text-amber-950">Court {c}:</span>{' '}
                           {config.date ? format(config.date, 'MMMM d, yyyy') : ''} @{' '}
-                          {config.times.sort().join(', ')}
+                          {config.times.sort().map(formatTimeSlot).join(', ')}
                         </div>
                       );
                     })}
@@ -1719,7 +1769,7 @@ export default function App() {
                         <div key={c} className="flex flex-col sm:flex-row sm:justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                           <span className="text-slate-500 font-bold">Court {c}</span>
                           <span className="text-slate-800 font-bold truncate max-w-[240px]">
-                            {config.date ? format(config.date, 'MMM d') : ''} @ {config.times.sort().join(', ')}
+                            {config.date ? format(config.date, 'MMM d') : ''} @ {config.times.sort().map(formatTimeSlot).join(', ')}
                           </span>
                         </div>
                       );

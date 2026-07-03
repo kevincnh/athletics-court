@@ -1,6 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { X, Check, RefreshCw, AlertTriangle, ChevronRight, User, Phone, Mail, Calendar, MapPin, Clock } from 'lucide-react';
+import { formatTimeSlot } from '../ui/utils';
 
 export function BookingCard({
   booking: b,
@@ -108,7 +109,7 @@ export function BookingCard({
                 <div className="flex flex-col gap-1.5 w-full">
                   {slots.map((s:any) => (
                     <div key={s.timeSlot} className="flex items-center gap-2">
-                      <span className={s.status === 'rejected' ? 'line-through text-slate-400' : ''}>{s.timeSlot}</span>
+                      <span className={s.status === 'rejected' ? 'line-through text-slate-400' : ''}>{formatTimeSlot(s.timeSlot)}</span>
                       {s.status === 'rejected' && (
                         <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 uppercase tracking-wide">Rejected</span>
                       )}

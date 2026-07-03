@@ -1,6 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { AlertTriangle, Check, RefreshCw, User, Phone, Mail, Calendar, MapPin, Clock } from 'lucide-react';
+import { formatTimeSlot } from '../ui/utils';
 
 export function ConflictGroupCard({
   bookings,
@@ -75,7 +76,7 @@ export function ConflictGroupCard({
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></div>
                   <span className="font-extrabold text-sm text-slate-800">
-                    Court {court} &bull; {formatDate(date)} &bull; {timeSlot}
+                    Court {court} &bull; {formatDate(date)} &bull; {formatTimeSlot(timeSlot)}
                   </span>
                 </div>
                 <span className="text-xs font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded uppercase tracking-wider">
@@ -125,7 +126,7 @@ export function ConflictGroupCard({
                                   {activeOtherSlots.map((s: any, idx: number) => (
                                     <div key={idx} className="flex items-center gap-1.5 bg-white border border-slate-100 rounded px-2 py-1">
                                       <div className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0"></div>
-                                      <span className="truncate">Court {s.court} &bull; {formatDate(s.date)} &bull; {s.timeSlot}</span>
+                                      <span className="truncate">Court {s.court} &bull; {formatDate(s.date)} &bull; {formatTimeSlot(s.timeSlot)}</span>
                                     </div>
                                   ))}
                                 </div>
