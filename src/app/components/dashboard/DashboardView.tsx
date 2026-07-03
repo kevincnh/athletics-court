@@ -329,17 +329,12 @@ export function DashboardView({
               {activityData.map((stat, i) => (
                 <div key={i} className="flex flex-col items-center gap-2 w-full h-full relative">
                   <div className="flex-1 flex flex-col justify-end w-full relative">
-                    {stat.total > 0 && (
-                      <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-black text-slate-700">
-                        {stat.total}
-                      </div>
-                    )}
                     <div className="w-full bg-slate-50 rounded-t-lg relative flex flex-col justify-end h-full overflow-hidden">
                       <div
                         className="w-full bg-slate-300 flex items-center justify-center transition-all overflow-hidden"
                         style={{ height: stat.pendingH }}
                       >
-                        {stat.pending > 0 && stat.confirmed > 0 && (stat.pending / maxActivity) * 100 > 8 && (
+                        {stat.pending > 0 && (
                           <span className="text-[10px] font-black text-slate-600 mix-blend-color-burn">{stat.pending}</span>
                         )}
                       </div>
@@ -347,7 +342,7 @@ export function DashboardView({
                         className="w-full bg-amber-400 flex items-center justify-center transition-all overflow-hidden"
                         style={{ height: stat.confirmedH }}
                       >
-                        {stat.confirmed > 0 && stat.pending > 0 && (stat.confirmed / maxActivity) * 100 > 8 && (
+                        {stat.confirmed > 0 && (
                           <span className="text-[10px] font-black text-amber-900 mix-blend-color-burn">{stat.confirmed}</span>
                         )}
                       </div>
