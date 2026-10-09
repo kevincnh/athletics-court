@@ -15,5 +15,12 @@ CREATE TABLE IF NOT EXISTS reserved_slots (
   date TEXT NOT NULL,          -- YYYY-MM-DD
   time_slot TEXT NOT NULL,     -- HH:MM AM/PM
   calendar_event_id TEXT,      -- Google Calendar Event ID (filled upon confirmation)
+  status TEXT DEFAULT 'pending', -- 'pending' | 'confirmed' | 'rejected'
   FOREIGN KEY(booking_id) REFERENCES bookings(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
